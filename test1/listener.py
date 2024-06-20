@@ -23,8 +23,7 @@ class MinimalSubscriber(Node):
                                     msg.pose.orientation.x,
                                     msg.pose.orientation.y,
                                     msg.pose.orientation.z,
-                                    msg.pose.orientation.w))
-                                    
+                                    msg.pose.orientation.w))                                    
 
 
 def main(args=None):

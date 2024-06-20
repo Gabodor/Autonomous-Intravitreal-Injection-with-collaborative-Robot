@@ -7,6 +7,7 @@ import time
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped
+from tf2_msgs.msg import TFMessage
 
 from roboticstoolbox import quintic, mtraj
 
@@ -19,7 +20,15 @@ class Ur3_controller(Node):
     def __init__(self):
         super().__init__('ur3_controller')
         self.cli = self.create_client(Pose, 'test1')
-        self.publisher_ = self.create_publisher(PoseStamped, 'topic', 10)               # target_frame(Coppeliasim) / topic(Listener)
+        self.publisher = self.create_publisher(PoseStamped, 'target_frame', 10)               # target_frame(Coppeliasim) / topic(Listener)
+        self.subscription = self.create_subscription(
+            TFMessage,
+            'tf',
+            self.listener_callback,
+            10)
+        self.subscription  # prevent unused variable warning
+
+        self.check = False
 
         while not self.cli.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('service not available, waiting again...')
@@ -40,11 +49,12 @@ class Ur3_controller(Node):
         response = self.send_request(0)
         self.get_logger().info('Requesting first quaternion to compute planning')
 
-        q_start=(-0.13088, 0.29877, 0.30323, 0.99999, 0.00039, 0.00039, 0.00039)
+        while not self.check:
+            pass
 
         #q_end=(0.37158, 0.15214, 0.32538, 0.99999, 0.00039, 0.00039, 0.00039)
         q_end=(0.37158, 0.15214, 0.32538, response.x, response.y, response.z, response.w)
-        self.trajectory = mtraj(quintic, q_start, q_end, STEP_MAX)
+        self.trajectory = mtraj(quintic, self.q_start, q_end, STEP_MAX)
     
     def publish_pose(self, position, orientation):
         msg = PoseStamped()
@@ -59,7 +69,7 @@ class Ur3_controller(Node):
         msg.pose.orientation.z = orientation[2]
         msg.pose.orientation.w = orientation[3]
     
-        self.publisher_.publish(msg)
+        self.publisher.publish(msg)
         #self.get_logger().info('Publishing pose: [ position: (x:%f, y:%f, z:%f), orientation (x:%f, y:%f, z:%f, w:%f)]'
         #                        % (position[0], position[1], position[2], orientation[0], orientation[1], orientation[2], orientation[3]))
         self.get_logger().info('Publishing pose')
@@ -86,6 +96,23 @@ class Ur3_controller(Node):
 
             time.sleep(TIME_STEP)        
         print("Move second complete")
+
+    def listener_callback(self, msg):
+        self.destroy_subscription(self.subscription)
+
+        for t in msg.transforms:
+            self.get_logger().info('Pose %s: [ translation: (x:%f, y:%f, z:%f), rotation: (x:%f, y:%f, z:%f, w:%f)]'
+                                    % (t.child_frame_id,
+                                        t.transform.translation.x,
+                                        t.transform.translation.y,
+                                        t.transform.translation.z,
+                                        t.transform.rotation.x,
+                                        t.transform.rotation.y,
+                                        t.transform.rotation.z,
+                                        t.transform.rotation.w))
+        
+        self.q_start=(-0.13088, 0.29877, 0.30323, 0.99999, 0.00039, 0.00039, 0.00039)
+        self.check = True
 
 
 

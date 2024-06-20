@@ -3,6 +3,7 @@ from project_interfaces.srv import Pose
 
 import rclpy
 from rclpy.node import Node
+from geometry_msgs.msg import PoseStamped
 
 import argparse
 import numpy as np
@@ -54,8 +55,8 @@ class MinimalService(Node):
         self.srv = self.create_service(Pose, 'test1', self.test1_callback)
 
     def RPY_to_quaternion(self, roll, pitch, yaw):
-        print("NOT PROCESSED:")
-        print("[roll: %f, pitch: %f, yaw: %f]" % (roll,pitch,yaw))
+        #print("NOT PROCESSED:")
+        #print("[roll: %f, pitch: %f, yaw: %f]" % (roll,pitch,yaw))
         #q = euler.euler2quat(roll, pitch, yaw)
 
         #pitch = 90.0 - pitch
