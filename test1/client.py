@@ -10,6 +10,9 @@ from geometry_msgs.msg import PoseStamped
 from tf2_msgs.msg import TFMessage
 
 from roboticstoolbox import quintic, mtraj
+import numpy as np
+import quaternion
+from transforms3d import euler
 
 STEP_MAX = 10
 FREQUENCY = 4
@@ -42,7 +45,13 @@ class Ur3_controller(Node):
         self.req.r = r
         future = self.cli.call_async(self.req)
         rclpy.spin_until_future_complete(self, future)
-        return future.result()
+        response = future.result()
+        
+        q_trans = euler.euler2quat(-np.pi/2, 0, -np.pi/2, 'rzyx')
+        q_eye = np.array([response.w, response.x, response.y, response.z])
+        q = self.quaternion_multiply(q_trans, q_eye)
+
+        return q
     
     def trajectory_planning(self):                                                          #da rivedere
         # Deve chiedere configurazione attuale end-effector e finale
@@ -52,9 +61,8 @@ class Ur3_controller(Node):
         while not self.check:
             pass
 
-        #q_end=(0.37158, 0.15214, 0.32538, 0.99999, 0.00039, 0.00039, 0.00039)
-        q_end=(0.37158, 0.15214, 0.32538, response.x, response.y, response.z, response.w)
-        self.trajectory = mtraj(quintic, self.q_start, q_end, STEP_MAX)
+        q_end=(0.37158, 0.15214, 0.32538, response[1], response[2], response[3], response[0])
+        self.trajectory = mtraj(quintic, self.current_pose, q_end, STEP_MAX)
     
     def publish_pose(self, position, orientation):
         msg = PoseStamped()
@@ -64,14 +72,13 @@ class Ur3_controller(Node):
         msg.pose.position.x = position[0]
         msg.pose.position.y = position[1]
         msg.pose.position.z = position[2]
-        msg.pose.orientation.x = orientation[0]                       #controlla ordine x y z w
+        msg.pose.orientation.x = orientation[0]
         msg.pose.orientation.y = orientation[1]
         msg.pose.orientation.z = orientation[2]
         msg.pose.orientation.w = orientation[3]
-    
+        
+        self.current_pose = np.concatenate((position, orientation))
         self.publisher.publish(msg)
-        #self.get_logger().info('Publishing pose: [ position: (x:%f, y:%f, z:%f), orientation (x:%f, y:%f, z:%f, w:%f)]'
-        #                        % (position[0], position[1], position[2], orientation[0], orientation[1], orientation[2], orientation[3]))
         self.get_logger().info('Publishing pose')
                                
     def move_first(self):
@@ -80,25 +87,28 @@ class Ur3_controller(Node):
             q = self.trajectory.q[self.time]
             position = (q[0], q[1], q[2])
             orientation = (q[3], q[4], q[5], q[6])
+
             self.publish_pose(position, orientation)
+
             time.sleep(TIME_STEP)      
             self.time = self.time+1
-        print("\nMove first complete\n")
     
     def move_second(self):
         while True:
             response = self.send_request(0)
-            position = (0.37158, 0.15214, 0.32538)
-            orientation = (response.x, response.y, response.z, response.w)
+            position = (self.current_pose[0], self.current_pose[1], self.current_pose[2])
+            orientation = (response[1], response[2], response[3], response[0])
 
             self.get_logger().info('Requesting quaternion')
             self.publish_pose(position, orientation)
 
             time.sleep(TIME_STEP)        
-        print("Move second complete")
 
     def listener_callback(self, msg):
         self.destroy_subscription(self.subscription)
+
+        translation = np.array([])
+        rotation = np.array([])
 
         for t in msg.transforms:
             self.get_logger().info('Pose %s: [ translation: (x:%f, y:%f, z:%f), rotation: (x:%f, y:%f, z:%f, w:%f)]'
@@ -110,10 +120,35 @@ class Ur3_controller(Node):
                                         t.transform.rotation.y,
                                         t.transform.rotation.z,
                                         t.transform.rotation.w))
+            np.append(translation, [t.transform.translation.x, t.transform.translation.y, t.transform.translation.z])
+            np.append(rotation, [t.transform.rotation.x, t.transform.rotation.y, t.transform.rotation.z, t.transform.rotation.w])
+
+        tmp = translation[0]
+        translation[0] = translation[2]
+        translation[2] = tmp
+
+        tmp = rotation[0]
+        rotation[0] = rotation[2]
+        rotation[2] = tmp
+
+        position = [0.0, 0.0, 0.0]
+
+        q = translation[0]
+        for i in range(0, 6):
+            if i!=0 :
+                q = self.quaternion_multiply(translation[i], q)
+            q_c = quaternion.conj
         
-        self.q_start=(-0.13088, 0.29877, 0.30323, 0.99999, 0.00039, 0.00039, 0.00039)
+        self.current_pose = (-0.13088, 0.29877, 0.30323, 0.99999, 0.00039, 0.00039, 0.00039)
         self.check = True
 
+    def quaternion_multiply(self, quaternion1, quaternion0):
+        w0, x0, y0, z0 = quaternion0
+        w1, x1, y1, z1 = quaternion1
+        return np.array([-x1 * x0 - y1 * y0 - z1 * z0 + w1 * w0,
+                        x1 * w0 + y1 * z0 - z1 * y0 + w1 * x0,
+                        -x1 * z0 + y1 * w0 + z1 * x0 + w1 * y0,
+                        x1 * y0 - y1 * x0 + z1 * w0 + w1 * z0], dtype=np.float64)
 
 
 def main():

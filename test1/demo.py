@@ -55,28 +55,18 @@ class MinimalService(Node):
         self.srv = self.create_service(Pose, 'test1', self.test1_callback)
 
     def RPY_to_quaternion(self, roll, pitch, yaw):
-        #print("NOT PROCESSED:")
-        #print("[roll: %f, pitch: %f, yaw: %f]" % (roll,pitch,yaw))
-        #q = euler.euler2quat(roll, pitch, yaw)
+        w, x, y, z = euler.euler2quat(roll, pitch, yaw, 'rzyx')
 
-        #pitch = 90.0 - pitch
-        yaw = 90.0 -yaw
-
-        print("PROCESSED:")
         print("[roll: %f, pitch: %f, yaw: %f]" % (roll,pitch,yaw))
-        #q = euler.euler2quat(roll, pitch, yaw)
-        q = euler.euler2quat(roll, yaw, pitch)                                          #need to invert them, probably for kinematic
-
-        w = q[0]
-        x = q[1]
-        y = q[2]
-        z = q[3]
+        print("[w: %f, x: %f, y: %f, z: %f]" % (w, x, y, z))
 
         return w, x, y, z
 
     def get_quaternion(self):
+        print("wow1")
         with torch.no_grad():
             # Get frame
+            print("wow1")
             success, frame = self.cap.read()    
             start_fps = time.time()  
 
@@ -86,8 +76,8 @@ class MinimalService(Node):
 
             # Process frame
             results = self.gaze_pipeline.step(frame)
-            print("pitch",results.pitch[0],"yaw",results.yaw[0])
             w, x, y, z = self.RPY_to_quaternion(0, results.pitch[0], results.yaw[0])
+            #w, x, y, z = self.RPY_to_quaternion(0, 0, 0)
 
             # Visualize output
             frame = render(frame, results)
@@ -97,17 +87,12 @@ class MinimalService(Node):
 
             cv2.imshow("Demo",frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
-            #    break
                 success,frame = self.cap.read()  
             
             return w, x, y, z
 
     def test1_callback(self, request, response):
         response.w, response.x, response.y, response.z = self.get_quaternion()
-        #response.w = 1.0
-        #response.x = 0.0
-        #response.y = 0.0
-        #response.z = 0.0
         self.get_logger().info('Incoming request\n r: %d' % (request.r))
 
         return response
@@ -137,6 +122,30 @@ def main(args=None):
     rclpy.init()
 
     minimal_service = MinimalService(cap, gaze_pipeline)
+
+    with torch.no_grad():
+        while True:
+            # Get frame
+            success, frame = cap.read()    
+            start_fps = time.time()  
+
+            if not success:
+                print("Failed to obtain frame")
+                time.sleep(0.1)
+
+            # Process frame
+            results = gaze_pipeline.step(frame)
+
+            # Visualize output
+            frame = render(frame, results)
+            
+            myFPS = 1.0 / (time.time() - start_fps)
+            cv2.putText(frame, 'FPS: {:.1f}'.format(myFPS), (10, 20),cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0, 255, 0), 1, cv2.LINE_AA)
+
+            cv2.imshow("Demo",frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+            success,frame = cap.read()  
 
     rclpy.spin(minimal_service)
 
