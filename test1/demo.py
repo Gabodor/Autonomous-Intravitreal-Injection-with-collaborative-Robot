@@ -19,6 +19,10 @@ import torchvision
 import math
 from transforms3d import euler
 
+from tf2_ros.transform_listener import TransformListener
+from tf2_ros.buffer import Buffer
+from tf2_ros import TransformException
+
 from PIL import Image
 from PIL import Image, ImageOps
 
@@ -63,10 +67,8 @@ class MinimalService(Node):
         return w, x, y, z
 
     def get_quaternion(self):
-        print("wow1")
         with torch.no_grad():
             # Get frame
-            print("wow1")
             success, frame = self.cap.read()    
             start_fps = time.time()  
 
@@ -122,30 +124,6 @@ def main(args=None):
     rclpy.init()
 
     minimal_service = MinimalService(cap, gaze_pipeline)
-
-    with torch.no_grad():
-        while True:
-            # Get frame
-            success, frame = cap.read()    
-            start_fps = time.time()  
-
-            if not success:
-                print("Failed to obtain frame")
-                time.sleep(0.1)
-
-            # Process frame
-            results = gaze_pipeline.step(frame)
-
-            # Visualize output
-            frame = render(frame, results)
-            
-            myFPS = 1.0 / (time.time() - start_fps)
-            cv2.putText(frame, 'FPS: {:.1f}'.format(myFPS), (10, 20),cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0, 255, 0), 1, cv2.LINE_AA)
-
-            cv2.imshow("Demo",frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-            success,frame = cap.read()  
 
     rclpy.spin(minimal_service)
 
