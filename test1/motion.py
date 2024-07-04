@@ -77,7 +77,7 @@ class Ur3_controller(Node):
         self.get_logger().info('Requesting first quaternion to compute planning')
 
         # Dovrai cercare posizione del frame                                                            da guardare
-        q_end=(-0.15, 0.50, 0.32538, w, x, y, z)
+        q_end = (-0.15, 0.45, 0.32538, w, x, y, z)
 
         # Compute trajectory, quintic polynomial
         self.trajectory = mtraj(quintic, self.current_pose, q_end, STEP_MAX)
@@ -113,8 +113,8 @@ class Ur3_controller(Node):
         rclpy.spin_until_future_complete(self, future)
         response = future.result()
 
+        q_eye = np.array([response.w, -response.x, response.y, -response.z])
         q_trans = euler.euler2quat(0, 0, -np.pi/2, 'rzyx')
-        q_eye = np.array([response.w, -response.x, -response.y, -response.z])
         q = self.quaternion_multiply(q_trans, q_eye)
 
         return q
@@ -134,7 +134,7 @@ class Ur3_controller(Node):
         msg.pose.orientation.y = orientation[2]
         msg.pose.orientation.z = orientation[3]
         
-        #self.current_pose = np.concatenate((position, orientation))
+        self.current_pose = np.concatenate((position, orientation))
         self.publisher.publish(msg)
         self.get_logger().info('Publishing pose')
 

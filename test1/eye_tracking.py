@@ -78,8 +78,8 @@ def eye_tracking():
         arch='ResNet50',
         device = select_device(args.device, batch_size=1)
     )
-     
-    cap = cv2.VideoCapture(cam)
+    # checking camera index: ls -al /dev/video*
+    cap = cv2.VideoCapture(2)
 
     # Check if the webcam is opened correctly
     if not cap.isOpened():
@@ -121,7 +121,7 @@ class MinimalService(Node):
 
     def __init__(self):
         super().__init__('minimal_service')
-        self.srv = self.create_service(Pose, 'test1', self.test1_callback)
+        self.srv = self.create_service(Pose, 'test1', self.service_callback)
 
         # Create publisher to publish eye movement in the simulation 
         self.marker_publisher = self.create_publisher(Marker, 'visualization_marker', 10)
@@ -129,20 +129,15 @@ class MinimalService(Node):
         self.timer = self.create_timer(PUBLISH_FREQUENCY, self.environment_building)
         print("Vai su RVIZ:\n - ADD /rviz_default_plugin/Marker\n - change topic name to 'visualization_marker'")
 
-    def RPY_to_quaternion(self, roll, pitch, yaw):
-        w, x, y, z = euler.euler2quat(roll, pitch, yaw, 'rzyx')
-
-        print("[roll: %f, pitch: %f, yaw: %f]" % (roll,pitch,yaw))
-        print("[w: %f, x: %f, y: %f, z: %f]" % (w, x, y, z))
-
-        return w, x, y, z
-
     def get_quaternion(self):
-        w, x, y, z = self.RPY_to_quaternion(ROLL, PITCH, YAW)
+        w, x, y, z = euler.euler2quat(ROLL, PITCH, YAW, 'rzyx')
+
+        print("\n[roll: %f, pitch: %f, yaw: %f]" % (ROLL, PITCH, YAW))
+        print("[w: %f, x: %f, y: %f, z: %f]" % (w, x, y, z))    
 
         return w, x, y, z
 
-    def test1_callback(self, request, response):
+    def service_callback(self, request, response):
         response.w, response.x, response.y, response.z = self.get_quaternion()
         self.get_logger().info('Incoming request\n r: %d' % (request.r))
 
@@ -157,17 +152,17 @@ class MinimalService(Node):
                         x1 * y0 - y1 * x0 + z1 * w0 + w1 * z0], dtype=np.float64)
     
     def environment_building(self):        
-        w, x, y, z = self.get_quaternion()  
+        q = self.get_quaternion()  
         q_trans = euler.euler2quat(np.pi, 0, -np.pi/2, 'rzyx')
-        q_eye = np.array([w, x, y, z])
-        w, x, y, z = self.quaternion_multiply(q_trans, q_eye)    
+        w, x, y, z = self.quaternion_multiply(q_trans, q)
+   
         t = TransformStamped()
 
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = 'base_link'
         t.child_frame_id = 'eye_frame'
         t.transform.translation.x = -0.15
-        t.transform.translation.y = 0.65
+        t.transform.translation.y = 0.55
         t.transform.translation.z = 0.32538
         t.transform.rotation.w = w
         t.transform.rotation.x = x
@@ -253,15 +248,13 @@ class MinimalService(Node):
 def main(args=None):
     t1 = threading.Thread(target=eye_tracking,args=())
     t1.start()
+
     rclpy.init()
-
     minimal_service = MinimalService()
-
     rclpy.spin(minimal_service)
 
-    rclpy.shutdown()
     t1.join()
-
+    rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
