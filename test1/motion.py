@@ -3,7 +3,6 @@ import sys
 from project_interfaces.srv import Pose
 
 import time
-import threading
 
 import rclpy
 from rclpy.node import Node
@@ -39,10 +38,6 @@ class Ur3_controller(Node):
 
         # Create publisher to publish planning
         self.publisher = self.create_publisher(PoseStamped, 'target_frame', 10)
-
-        # Create publisher to publish eye movement in the simulation 
-        self.marker_publisher = self.create_publisher(Marker, 'visualization_marker', 10)
-        self.tf_broadcaster = TransformBroadcaster(self)
         
         # Getting initial pose
         self.get_initial_pose()
@@ -55,31 +50,26 @@ class Ur3_controller(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        self.waiting_pose = True
-        while self.waiting_pose:
-            future = self.tf_buffer.wait_for_transform_async(
+        waiting_pose = True
+        while waiting_pose:           
+            try:
+                future = self.tf_buffer.wait_for_transform_async(
+                        'base_link',
+                        'wrist_3_link',
+                        rclpy.time.Time()
+                        )
+                rclpy.spin_until_future_complete(self, future)
+                trans = self.tf_buffer.lookup_transform(
                     'base_link',
                     'wrist_3_link',
                     rclpy.time.Time()
                     )
-            rclpy.spin_until_future_complete(self, future)
-            self.get_initial_pose_callback()
-    
-    def get_initial_pose_callback(self):    
-        try:
-            trans = self.tf_buffer.lookup_transform(
-                'base_link',
-                'wrist_3_link',
-                rclpy.time.Time()
-                )
-            self.current_pose = (   trans.transform.translation.x, trans.transform.translation.y, trans.transform.translation.z,
-                                    trans.transform.rotation.w, trans.transform.rotation.x, trans.transform.rotation.y, trans.transform.rotation.z)
-            self.waiting_pose = False
-
-        except TransformException as ex:
-            self.get_logger().info(
-                f'Could not transform: {ex}')
-            return
+                self.current_pose = (   trans.transform.translation.x, trans.transform.translation.y, trans.transform.translation.z,
+                                        trans.transform.rotation.w, trans.transform.rotation.x, trans.transform.rotation.y, trans.transform.rotation.z)
+                waiting_pose = False
+            except TransformException as ex:
+                self.get_logger().info(
+                    f'Could not transform: {ex}')
     
     def trajectory_planning(self):
         # Get eye orientation 
@@ -122,13 +112,10 @@ class Ur3_controller(Node):
         future = self.cli.call_async(self.req)
         rclpy.spin_until_future_complete(self, future)
         response = future.result()
-        
-        # Transform eye quaternion from its frame to world frame
-        q_trans = euler.euler2quat(0, 0, -np.pi/2, 'rzyx')
-        q_eye = np.array([response.w, response.x, response.y, response.z])
-        q = self.quaternion_multiply(q_trans, q_eye)
 
-        self.environment_building(q)
+        q_trans = euler.euler2quat(0, 0, -np.pi/2, 'rzyx')
+        q_eye = np.array([response.w, -response.x, -response.y, -response.z])
+        q = self.quaternion_multiply(q_trans, q_eye)
 
         return q
     
@@ -159,97 +146,6 @@ class Ur3_controller(Node):
                         -x1 * z0 + y1 * w0 + z1 * x0 + w1 * y0,
                         x1 * y0 - y1 * x0 + z1 * w0 + w1 * z0], dtype=np.float64)
     
-    def environment_building(self, rotation):
-        print("Vai su RVIZ:\n - ADD /rviz_default_plugin/Marker\n - change topic name to 'visualization_marker'")
-        
-        t = TransformStamped()
-
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = 'base_link'
-        t.child_frame_id = 'prova_frame'
-        t.transform.translation.x = -0.15
-        t.transform.translation.y = 0.65
-        t.transform.translation.z = 0.32538
-        t.transform.rotation.w = rotation[0]
-        t.transform.rotation.x = rotation[1]
-        t.transform.rotation.y = rotation[2]
-        t.transform.rotation.z = rotation[3]
-
-        self.tf_broadcaster.sendTransform(t)
-
-        marker = Marker()
-
-        marker.header.frame_id = "prova_frame"
-        marker.header.stamp = self.get_clock().now().to_msg()
-
-        marker.ns = "my_namespace"
-        marker.id = 0
-        marker.type = Marker.SPHERE
-        marker.action = Marker.ADD
-        marker.pose.position.x = 0.0
-        marker.pose.position.y = 0.0
-        marker.pose.position.z = 0.0
-        marker.pose.orientation.w = 1.0
-        marker.pose.orientation.x = 0.0
-        marker.pose.orientation.y = 0.0
-        marker.pose.orientation.z = 0.0
-        marker.scale.x = 0.1
-        marker.scale.y = 0.1
-        marker.scale.z = 0.1
-        marker.color.a = 1.0
-        marker.color.r = 255.0 / 255.0
-        marker.color.g = 255.0 / 255.0
-        marker.color.b = 255.0 / 255.0
-
-        self.marker_publisher.publish(marker)
-
-        marker.header.frame_id = "prova_frame"
-        marker.header.stamp = self.get_clock().now().to_msg()
-
-        marker.ns = "my_namespace"
-        marker.id = 1
-        marker.type = Marker.SPHERE
-        marker.action = Marker.ADD
-        marker.pose.position.x = 0.0
-        marker.pose.position.y = 0.0
-        marker.pose.position.z = -0.04
-        marker.pose.orientation.w = 1.0
-        marker.pose.orientation.x = 0.0
-        marker.pose.orientation.y = 0.0
-        marker.pose.orientation.z = 0.0
-        marker.scale.x = 0.05
-        marker.scale.y = 0.05
-        marker.scale.z = 0.02
-        marker.color.a = 1.0
-        marker.color.r = 0.0 / 255.0
-        marker.color.g = 150.0 / 255.0
-        marker.color.b = 0.0 / 255.0
-
-        self.marker_publisher.publish(marker)
-
-        marker.header.frame_id = "prova_frame"
-        marker.header.stamp = self.get_clock().now().to_msg()
-
-        marker.ns = "my_namespace"
-        marker.id = 2
-        marker.type = Marker.SPHERE
-        marker.action = Marker.ADD
-        marker.pose.position.x = 0.0
-        marker.pose.position.y = 0.0
-        marker.pose.position.z = -0.05
-        marker.pose.orientation.w = 1.0
-        marker.pose.orientation.x = 0.0
-        marker.pose.orientation.y = 0.0
-        marker.pose.orientation.z = 0.0
-        marker.scale.x = 0.02
-        marker.scale.y = 0.02
-        marker.scale.z = 0.005
-        marker.color.a = 1.0
-        marker.color.r = 0.0 / 255.0
-        marker.color.g = 0.0 / 255.0
-        marker.color.b = 0.0 / 255.0
-
-        self.marker_publisher.publish(marker)
 
 
 def main():

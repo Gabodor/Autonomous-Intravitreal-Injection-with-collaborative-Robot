@@ -20,9 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'demo = test1.demo:main',
-            'client = test1.client:main',
-            'listener = test1.listener:main',
+            'motion = test1.motion:main',
+            'eye_tracking = test1.eye_tracking:main'
         ],
     },
 )
