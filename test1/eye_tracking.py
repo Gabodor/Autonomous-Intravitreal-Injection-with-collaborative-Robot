@@ -20,10 +20,6 @@ import torchvision
 import math
 from transforms3d import euler
 
-from tf2_ros.transform_listener import TransformListener
-from tf2_ros.buffer import Buffer
-from tf2_ros import TransformException
-
 from PIL import Image
 from PIL import Image, ImageOps
 
@@ -79,7 +75,9 @@ def eye_tracking():
         device = select_device(args.device, batch_size=1)
     )
     # checking camera index: ls -al /dev/video*
-    cap = cv2.VideoCapture(2)
+    # cam = 2 # To test other cameras
+    # adding '--cam N_CAMERA' to command line to change camera
+    cap = cv2.VideoCapture(cam)
 
     # Check if the webcam is opened correctly
     if not cap.isOpened():
@@ -139,6 +137,7 @@ class MinimalService(Node):
 
     def service_callback(self, request, response):
         response.w, response.x, response.y, response.z = self.get_quaternion()
+        #response.w, response.x, response.y, response.z = (1.0, 0.0, 0.0, 0.0)
         self.get_logger().info('Incoming request\n r: %d' % (request.r))
 
         return response
@@ -187,9 +186,9 @@ class MinimalService(Node):
         marker.pose.orientation.x = 0.0
         marker.pose.orientation.y = 0.0
         marker.pose.orientation.z = 0.0
-        marker.scale.x = 0.1
-        marker.scale.y = 0.1
-        marker.scale.z = 0.1
+        marker.scale.x = 0.05
+        marker.scale.y = 0.05
+        marker.scale.z = 0.05
         marker.color.a = 1.0
         marker.color.r = 255.0 / 255.0
         marker.color.g = 255.0 / 255.0
@@ -206,14 +205,14 @@ class MinimalService(Node):
         marker.action = Marker.ADD
         marker.pose.position.x = 0.0
         marker.pose.position.y = 0.0
-        marker.pose.position.z = 0.04
+        marker.pose.position.z = 0.02
         marker.pose.orientation.w = 1.0
         marker.pose.orientation.x = 0.0
         marker.pose.orientation.y = 0.0
         marker.pose.orientation.z = 0.0
-        marker.scale.x = 0.05
-        marker.scale.y = 0.05
-        marker.scale.z = 0.02
+        marker.scale.x = 0.025
+        marker.scale.y = 0.025
+        marker.scale.z = 0.01
         marker.color.a = 1.0
         marker.color.r = 0.0 / 255.0
         marker.color.g = 150.0 / 255.0
@@ -230,14 +229,14 @@ class MinimalService(Node):
         marker.action = Marker.ADD
         marker.pose.position.x = 0.0
         marker.pose.position.y = 0.0
-        marker.pose.position.z = 0.05
+        marker.pose.position.z = 0.025
         marker.pose.orientation.w = 1.0
         marker.pose.orientation.x = 0.0
         marker.pose.orientation.y = 0.0
         marker.pose.orientation.z = 0.0
-        marker.scale.x = 0.02
-        marker.scale.y = 0.02
-        marker.scale.z = 0.005
+        marker.scale.x = 0.01
+        marker.scale.y = 0.01
+        marker.scale.z = 0.0025
         marker.color.a = 1.0
         marker.color.r = 0.0 / 255.0
         marker.color.g = 0.0 / 255.0

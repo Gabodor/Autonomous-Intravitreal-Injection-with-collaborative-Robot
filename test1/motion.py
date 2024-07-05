@@ -9,6 +9,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped, TransformStamped
 from tf2_ros.transform_listener import TransformListener
 from tf2_ros.transform_broadcaster import TransformBroadcaster
+from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 from tf2_ros.buffer import Buffer
 from tf2_ros import TransformException
 from visualization_msgs.msg import  Marker
@@ -19,7 +20,7 @@ from transforms3d import euler
 
 # Costant values
 STEP_MAX = 10
-FREQUENCY = 4
+FREQUENCY = 2
 TIME_STEP = 1/FREQUENCY
 TIME_MAX_SEC = STEP_MAX/FREQUENCY
 
@@ -29,6 +30,7 @@ class Ur3_controller(Node):
         super().__init__('ur3_controller')
         
         # Create client(eye-tracking) to get pose
+#        self.publish_static_tranform()
         self.cli = self.create_client(Pose, 'test1')
 
         # Wait for eye-tracking to start
@@ -40,11 +42,31 @@ class Ur3_controller(Node):
         self.publisher = self.create_publisher(PoseStamped, 'target_frame', 10)
         
         # Getting initial pose
+
         self.get_initial_pose()
 
         self.trajectory_planning()
         self.move_first()
         self.move_second()
+
+    def publish_static_tranform(self):
+        self.tf_static_broadcaster = StaticTransformBroadcaster(self)
+        t = TransformStamped()
+
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = 'wrist_3_link'
+        t.child_frame_id = 'safe_distance'
+
+        t.transform.translation.x = 0.0
+        t.transform.translation.y = 0.0
+        t.transform.translation.z = 0.05
+
+        t.transform.rotation.w = 1.0
+        t.transform.rotation.x = 0.0
+        t.transform.rotation.y = 0.0
+        t.transform.rotation.z = 0.0
+
+        self.tf_static_broadcaster.sendTransform(t)
 
     def get_initial_pose(self):
         self.tf_buffer = Buffer()
@@ -74,13 +96,16 @@ class Ur3_controller(Node):
     def trajectory_planning(self):
         # Get eye orientation 
         w, x, y, z = self.get_eye_orientation(0)
+
         self.get_logger().info('Requesting first quaternion to compute planning')
 
-        # Dovrai cercare posizione del frame                                                            da guardare
-        q_end = (-0.15, 0.45, 0.32538, w, x, y, z)
+        # Dovrai cercare posizione del frame    
+        self.end_pose = (-0.15, 0.48, 0.32538, w, x, y, z)
 
         # Compute trajectory, quintic polynomial
-        self.trajectory = mtraj(quintic, self.current_pose, q_end, STEP_MAX)
+        self.trajectory = mtraj(quintic, self.current_pose, self.end_pose, STEP_MAX)
+        self.end_pose = (-0.15, 0.55, 0.32538, w, x, y, z)
+        
                                
     def move_first(self):
         step = 0
@@ -98,13 +123,20 @@ class Ur3_controller(Node):
     
     def move_second(self):
         while True:
-            w, x, y, z  = self.get_eye_orientation(0)
+            q_e  = self.get_eye_orientation(0)
+            q_e_conj = np.array([q_e[0], -q_e[1], -q_e[2], -q_e[3]])
 
-            position = (self.current_pose[0], self.current_pose[1], self.current_pose[2])
-            orientation = (w, x, y, z)
+            p_e = np.array([0, self.end_pose[0], self.end_pose[1], self.end_pose[2]])
+
+            p_trasl = self.quaternion_multiply(q_e, np.array([0, 0, 0, -0.05]))
+            p_trasl = self.quaternion_multiply(p_trasl, q_e_conj)
+
+            p_r = p_e + p_trasl
+
+            position = np.array([p_r[1], p_r[2], p_r[3]])
+            orientation = q_e
 
             self.publish_pose(position, orientation)
-
             time.sleep(TIME_STEP)        
     
     def get_eye_orientation(self, request):
@@ -134,7 +166,7 @@ class Ur3_controller(Node):
         msg.pose.orientation.y = orientation[2]
         msg.pose.orientation.z = orientation[3]
         
-        self.current_pose = np.concatenate((position, orientation))
+        #self.current_pose = np.concatenate((position, orientation))
         self.publisher.publish(msg)
         self.get_logger().info('Publishing pose')
 
