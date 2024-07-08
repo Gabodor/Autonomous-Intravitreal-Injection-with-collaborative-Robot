@@ -19,8 +19,8 @@ import numpy as np
 from transforms3d import euler
 
 # Costant values
-STEP_MAX = 10
-FREQUENCY = 2
+STEP_MAX = 80
+FREQUENCY = 20
 TIME_STEP = 1/FREQUENCY
 TIME_MAX_SEC = STEP_MAX/FREQUENCY
 
@@ -30,7 +30,6 @@ class Ur3_controller(Node):
         super().__init__('ur3_controller')
         
         # Create client(eye-tracking) to get pose
-#        self.publish_static_tranform()
         self.cli = self.create_client(Pose, 'test1')
 
         # Wait for eye-tracking to start
@@ -41,13 +40,16 @@ class Ur3_controller(Node):
         # Create publisher to publish planning
         self.publisher = self.create_publisher(PoseStamped, 'target_frame', 10)
         
-        # Getting initial pose
-
+        # Getting initial pose and setting arriving pose
         self.get_initial_pose()
+        self.end_pose = (-0.15, 0.55, 0.32538,  0.707, - 0.707, 0.0, 0.0)
+        self.safe_distance = 0.05
+        self.publish_static_tranform()
 
         self.trajectory_planning()
-        self.move_first()
-        self.move_second()
+        self.eye_approaching()
+        self.eye_following()
+        self.eye_injection()
 
     def publish_static_tranform(self):
         self.tf_static_broadcaster = StaticTransformBroadcaster(self)
@@ -94,50 +96,88 @@ class Ur3_controller(Node):
                     f'Could not transform: {ex}')
     
     def trajectory_planning(self):
-        # Get eye orientation 
-        w, x, y, z = self.get_eye_orientation(0)
-
-        self.get_logger().info('Requesting first quaternion to compute planning')
-
-        # Dovrai cercare posizione del frame    
-        self.end_pose = (-0.15, 0.48, 0.32538, w, x, y, z)
-
-        # Compute trajectory, quintic polynomial
+        self.get_logger().info('Computing trajectory')
         self.trajectory = mtraj(quintic, self.current_pose, self.end_pose, STEP_MAX)
-        self.end_pose = (-0.15, 0.55, 0.32538, w, x, y, z)
-        
                                
-    def move_first(self):
+    def eye_approaching(self):
         step = 0
-        
         while step < STEP_MAX :
-            q = self.trajectory.q[step]
+            pose = self.trajectory.q[step]
 
-            position = (q[0], q[1], q[2])
-            orientation = (q[3], q[4], q[5], q[6])
+            position = (pose[0], pose[1], pose[2])
+            orientation = (pose[3], pose[4], pose[5], pose[6])
+
+            position = self.safe_distance_position(position, orientation, self.safe_distance)
 
             self.publish_pose(position, orientation)
 
             time.sleep(TIME_STEP)      
             step += 1
+
+        print("Move first")
     
-    def move_second(self):
-        while True:
-            q_e  = self.get_eye_orientation(0)
-            q_e_conj = np.array([q_e[0], -q_e[1], -q_e[2], -q_e[3]])
+    def eye_following(self):
+        step = 0
+        time_s = 10       # in seconds
+        while step < FREQUENCY*time_s:
+            orientation  = self.get_eye_orientation(0)
+            position = np.array([self.end_pose[0], self.end_pose[1], self.end_pose[2]])
 
-            p_e = np.array([0, self.end_pose[0], self.end_pose[1], self.end_pose[2]])
-
-            p_trasl = self.quaternion_multiply(q_e, np.array([0, 0, 0, -0.05]))
-            p_trasl = self.quaternion_multiply(p_trasl, q_e_conj)
-
-            p_r = p_e + p_trasl
-
-            position = np.array([p_r[1], p_r[2], p_r[3]])
-            orientation = q_e
+            position = self.safe_distance_position(position, orientation, self.safe_distance)
 
             self.publish_pose(position, orientation)
-            time.sleep(TIME_STEP)        
+
+            time.sleep(TIME_STEP)
+            step += 1
+        
+    def eye_injection(self):
+        # spostarsi di 90 gradi verso il centro dell'occhio
+        # diminuire la distanza dal centro dell'occhio gradualmente
+        step = 0
+        while step < STEP_MAX:
+            q  = self.get_eye_orientation(0)
+            position = np.array([self.end_pose[0], self.end_pose[1], self.end_pose[2]])
+
+            angle = -(np.pi/2)*(step/STEP_MAX)
+            q_trans = euler.euler2quat(0, angle, 0, 'rzyx')
+            orientation = self.quaternion_multiply(q, q_trans)
+
+            position = self.safe_distance_position(position, orientation, self.safe_distance)
+
+            self.publish_pose(position, orientation)
+            time.sleep(TIME_STEP)
+            step += 1
+
+        print("Move third - 1")
+
+        step = 0
+        while step < STEP_MAX:
+            q  = self.get_eye_orientation(0)
+            position = np.array([self.end_pose[0], self.end_pose[1], self.end_pose[2]])
+
+            q_trans = euler.euler2quat(0, -np.pi/2, 0, 'rzyx')
+            orientation = self.quaternion_multiply(q, q_trans)
+            
+            distance = self.safe_distance*(1.0 - step/STEP_MAX)
+            position = self.safe_distance_position(position, orientation, distance)
+
+            self.publish_pose(position, orientation)
+            time.sleep(TIME_STEP)
+            step += 1
+        
+        print("Move third - 2")
+
+    def safe_distance_position(self, position, orientation, safe_distance):
+        q = orientation
+        q_conjugate = np.array([q[0], -q[1], -q[2], -q[3]])
+
+        p = np.array([0, position[0], position[1], position[2]])
+
+        traslation = self.quaternion_multiply(q, np.array([0, 0, 0, -safe_distance]))
+        traslation = self.quaternion_multiply(traslation, q_conjugate)
+
+        p_traslated = np.array([p[1] + traslation[1], p[2] + traslation[2], p[3] + traslation[3]])
+        return p_traslated
     
     def get_eye_orientation(self, request):
         self.req.r = request
@@ -168,7 +208,7 @@ class Ur3_controller(Node):
         
         #self.current_pose = np.concatenate((position, orientation))
         self.publisher.publish(msg)
-        self.get_logger().info('Publishing pose')
+        #self.get_logger().info('Publishing pose')
 
     def quaternion_multiply(self, quaternion1, quaternion0):
         w0, x0, y0, z0 = quaternion0
@@ -185,6 +225,7 @@ def main():
 
     ur3_controller = Ur3_controller()
     rclpy.spin(ur3_controller)
+    
     ur3_controller.destroy_node()
     rclpy.shutdown()
 

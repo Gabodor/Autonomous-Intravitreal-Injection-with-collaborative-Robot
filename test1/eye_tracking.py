@@ -10,6 +10,8 @@ import numpy as np
 import cv2
 import time
 import threading
+from queue import Queue
+from collections import deque
 
 import torch
 import torch.nn as nn
@@ -38,7 +40,7 @@ ROLL = 0.0
 PITCH = 0.0
 YAW = 0.0
 
-PUBLISH_FREQUENCY = 0.1
+PUBLISH_FREQUENCY = 0.2
 
 def parse_args():
     """Parse input arguments."""
@@ -74,8 +76,7 @@ def eye_tracking():
         arch='ResNet50',
         device = select_device(args.device, batch_size=1)
     )
-    # checking camera index: ls -al /dev/video*
-    # cam = 2 # To test other cameras
+    # checking camera index: 'ls -al /dev/video*'
     # adding '--cam N_CAMERA' to command line to change camera
     cap = cv2.VideoCapture(cam)
 
@@ -89,7 +90,6 @@ def eye_tracking():
 
     with torch.no_grad():
         while True:
-
             # Get frame
             success, frame = cap.read()    
             start_fps = time.time()  
@@ -119,26 +119,58 @@ class MinimalService(Node):
 
     def __init__(self):
         super().__init__('minimal_service')
+
+        # Create buffer for smoothing the orientation
+        self.buffer = deque()
+        self.buffer.append(np.array([ROLL,PITCH,YAW]))
+
         self.srv = self.create_service(Pose, 'test1', self.service_callback)
 
         # Create publisher to publish eye movement in the simulation 
         self.marker_publisher = self.create_publisher(Marker, 'visualization_marker', 10)
         self.tf_broadcaster = TransformBroadcaster(self)
-        self.timer = self.create_timer(PUBLISH_FREQUENCY, self.environment_building)
-        print("Vai su RVIZ:\n - ADD /rviz_default_plugin/Marker\n - change topic name to 'visualization_marker'")
+        self.timer = self.create_timer(PUBLISH_FREQUENCY, self.routine)
+
+    def routine(self):
+        if len(self.buffer) < 8:
+            orientation = np.array([ROLL, PITCH, YAW])
+            for i in range(3):
+                orientation[i] = self.angle_limit_control(orientation[i], 0.70)
+
+            last_orientation = self.buffer[-1]
+            diff = (orientation - last_orientation)/3
+
+            for i in range(3):
+                last_orientation += diff
+                self.buffer.append(last_orientation)
+
+        self.environment_building()
+
+    def angle_limit_control(self, angle, limit):
+        if angle > limit:
+            angle = limit
+        if angle < -limit:
+            angle = -limit
+        return angle
 
     def get_quaternion(self):
-        w, x, y, z = euler.euler2quat(ROLL, PITCH, YAW, 'rzyx')
+        print(len(self.buffer))
+        if len(self.buffer) > 1:
+            roll, pitch, yaw = self.buffer.popleft()
+        else:
+            roll, pitch, yaw = self.buffer[0]
 
-        print("\n[roll: %f, pitch: %f, yaw: %f]" % (ROLL, PITCH, YAW))
-        print("[w: %f, x: %f, y: %f, z: %f]" % (w, x, y, z))    
+        w, x, y, z = euler.euler2quat(roll, pitch, yaw, 'rzyx')
+
+#        print("\n[roll: %f, pitch: %f, yaw: %f]" % (roll, pitch, yaw))
+#        print("[w: %f, x: %f, y: %f, z: %f]" % (w, x, y, z))    
 
         return w, x, y, z
 
     def service_callback(self, request, response):
         response.w, response.x, response.y, response.z = self.get_quaternion()
         #response.w, response.x, response.y, response.z = (1.0, 0.0, 0.0, 0.0)
-        self.get_logger().info('Incoming request\n r: %d' % (request.r))
+        self.get_logger().info('Incoming request r: %d' % (request.r))
 
         return response
 
@@ -150,8 +182,9 @@ class MinimalService(Node):
                         -x1 * z0 + y1 * w0 + z1 * x0 + w1 * y0,
                         x1 * y0 - y1 * x0 + z1 * w0 + w1 * z0], dtype=np.float64)
     
-    def environment_building(self):        
-        q = self.get_quaternion()  
+    def environment_building(self):     
+        roll, pitch, yaw = self.buffer[0]
+        q = euler.euler2quat(roll, pitch, yaw, 'rzyx')  
         q_trans = euler.euler2quat(np.pi, 0, -np.pi/2, 'rzyx')
         w, x, y, z = self.quaternion_multiply(q_trans, q)
    
