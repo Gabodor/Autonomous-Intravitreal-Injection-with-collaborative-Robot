@@ -42,7 +42,9 @@ class Ur3_controller(Node):
         
         # Getting initial pose and setting arriving pose
         self.get_initial_pose()
-        self.end_pose = (-0.15, 0.55, 0.32538,  0.707, - 0.707, 0.0, 0.0)
+        orientation = np.array([1.0, 0.0, 0.0, 0.0])
+        orientation = self.transform_orientation_to_eye(orientation)
+        self.end_pose = (-0.15, 0.40, 0.32538,  orientation[0], orientation[1], orientation[2], orientation[3])
         self.safe_distance = 0.05
         self.publish_static_tranform()
 
@@ -113,14 +115,15 @@ class Ur3_controller(Node):
 
             time.sleep(TIME_STEP)      
             step += 1
-
-        print("Move first")
     
     def eye_following(self):
         step = 0
-        time_s = 10       # in seconds
+        time_s = 5       # in seconds
         while step < FREQUENCY*time_s:
+        #while True:
             orientation  = self.get_eye_orientation(0)
+            orientation  = self.transform_orientation_to_eye(orientation)
+
             position = np.array([self.end_pose[0], self.end_pose[1], self.end_pose[2]])
 
             position = self.safe_distance_position(position, orientation, self.safe_distance)
@@ -129,18 +132,21 @@ class Ur3_controller(Node):
 
             time.sleep(TIME_STEP)
             step += 1
+        print("Move second")
         
     def eye_injection(self):
         # spostarsi di 90 gradi verso il centro dell'occhio
         # diminuire la distanza dal centro dell'occhio gradualmente
+        injection_angle = np.pi/2
         step = 0
         while step < STEP_MAX:
             q  = self.get_eye_orientation(0)
             position = np.array([self.end_pose[0], self.end_pose[1], self.end_pose[2]])
 
-            angle = -(np.pi/2)*(step/STEP_MAX)
-            q_trans = euler.euler2quat(0, angle, 0, 'rzyx')
-            orientation = self.quaternion_multiply(q, q_trans)
+            angle = (injection_angle)*(step/STEP_MAX)
+            orientation = self.get_injection_orientation(q, angle)
+            orientation  = self.transform_orientation_to_eye(orientation)
+
 
             position = self.safe_distance_position(position, orientation, self.safe_distance)
 
@@ -155,8 +161,8 @@ class Ur3_controller(Node):
             q  = self.get_eye_orientation(0)
             position = np.array([self.end_pose[0], self.end_pose[1], self.end_pose[2]])
 
-            q_trans = euler.euler2quat(0, -np.pi/2, 0, 'rzyx')
-            orientation = self.quaternion_multiply(q, q_trans)
+            orientation = self.get_injection_orientation(q, injection_angle)
+            orientation  = self.transform_orientation_to_eye(orientation)
             
             distance = self.safe_distance*(1.0 - step/STEP_MAX)
             position = self.safe_distance_position(position, orientation, distance)
@@ -166,6 +172,27 @@ class Ur3_controller(Node):
             step += 1
         
         print("Move third - 2")
+
+    def get_injection_orientation(self, orientation, angle):
+        roll, pitch, yaw = euler.quat2euler(orientation, 'rzyx')
+
+        if yaw == 0:
+            roll = 0
+            pitch = - np.sign(pitch)*angle
+        elif pitch == 0:
+            roll = 0
+            yaw = - np.sign(yaw)*angle
+        else:  
+            roll = - np.arctan2(np.sin(yaw/2), np.sin(pitch/2))
+            # tan of 135 or -45 degree is the same thing but not for the frame rotation
+            if np.abs(roll) > np.pi/2:
+                roll = - np.sign(roll)*(np.pi - np.abs(roll))
+            pitch = - np.sign(pitch)*angle
+            yaw = 0
+        
+        q = euler.euler2quat(roll, pitch, yaw, 'rzyx')
+        q = self.quaternion_multiply(orientation, q)
+        return q
 
     def safe_distance_position(self, position, orientation, safe_distance):
         q = orientation
@@ -184,12 +211,16 @@ class Ur3_controller(Node):
         future = self.cli.call_async(self.req)
         rclpy.spin_until_future_complete(self, future)
         response = future.result()
-
-        q_eye = np.array([response.w, -response.x, response.y, -response.z])
-        q_trans = euler.euler2quat(0, 0, -np.pi/2, 'rzyx')
-        q = self.quaternion_multiply(q_trans, q_eye)
+        q = np.array([response.w, response.x, response.y, response.z])
 
         return q
+    
+    def transform_orientation_to_eye(self, orientation):
+        q = np.array([orientation[0], -orientation[1], orientation[2], -orientation[3]])
+        q_trans = euler.euler2quat(0, 0, -np.pi/2, 'rzyx')
+        q = self.quaternion_multiply(q_trans, q)
+        return q
+
     
     def publish_pose(self, position, orientation):
         msg = PoseStamped()
@@ -225,7 +256,7 @@ def main():
 
     ur3_controller = Ur3_controller()
     rclpy.spin(ur3_controller)
-    
+
     ur3_controller.destroy_node()
     rclpy.shutdown()
 

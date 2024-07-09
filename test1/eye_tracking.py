@@ -154,22 +154,23 @@ class MinimalService(Node):
         return angle
 
     def get_quaternion(self):
-        print(len(self.buffer))
+        #print(len(self.buffer))
         if len(self.buffer) > 1:
             roll, pitch, yaw = self.buffer.popleft()
         else:
             roll, pitch, yaw = self.buffer[0]
 
+        #roll, pitch, yaw = 0,  -0.785,  -0.785
+
         w, x, y, z = euler.euler2quat(roll, pitch, yaw, 'rzyx')
 
-#        print("\n[roll: %f, pitch: %f, yaw: %f]" % (roll, pitch, yaw))
-#        print("[w: %f, x: %f, y: %f, z: %f]" % (w, x, y, z))    
+        #print("[roll: %f, pitch: %f, yaw: %f]" % (roll, pitch, yaw))
+        #print("[w: %f, x: %f, y: %f, z: %f]" % (w, x, y, z))    
 
         return w, x, y, z
 
     def service_callback(self, request, response):
         response.w, response.x, response.y, response.z = self.get_quaternion()
-        #response.w, response.x, response.y, response.z = (1.0, 0.0, 0.0, 0.0)
         self.get_logger().info('Incoming request r: %d' % (request.r))
 
         return response
@@ -187,6 +188,8 @@ class MinimalService(Node):
         q = euler.euler2quat(roll, pitch, yaw, 'rzyx')  
         q_trans = euler.euler2quat(np.pi, 0, -np.pi/2, 'rzyx')
         w, x, y, z = self.quaternion_multiply(q_trans, q)
+
+        size = 1
    
         t = TransformStamped()
 
@@ -194,7 +197,7 @@ class MinimalService(Node):
         t.header.frame_id = 'base_link'
         t.child_frame_id = 'eye_frame'
         t.transform.translation.x = -0.15
-        t.transform.translation.y = 0.55
+        t.transform.translation.y = 0.40
         t.transform.translation.z = 0.32538
         t.transform.rotation.w = w
         t.transform.rotation.x = x
@@ -219,9 +222,9 @@ class MinimalService(Node):
         marker.pose.orientation.x = 0.0
         marker.pose.orientation.y = 0.0
         marker.pose.orientation.z = 0.0
-        marker.scale.x = 0.05
-        marker.scale.y = 0.05
-        marker.scale.z = 0.05
+        marker.scale.x = 0.05 * size
+        marker.scale.y = 0.05 * size
+        marker.scale.z = 0.05 * size
         marker.color.a = 1.0
         marker.color.r = 255.0 / 255.0
         marker.color.g = 255.0 / 255.0
@@ -238,14 +241,14 @@ class MinimalService(Node):
         marker.action = Marker.ADD
         marker.pose.position.x = 0.0
         marker.pose.position.y = 0.0
-        marker.pose.position.z = 0.02
+        marker.pose.position.z = 0.02 * size
         marker.pose.orientation.w = 1.0
         marker.pose.orientation.x = 0.0
         marker.pose.orientation.y = 0.0
         marker.pose.orientation.z = 0.0
-        marker.scale.x = 0.025
-        marker.scale.y = 0.025
-        marker.scale.z = 0.01
+        marker.scale.x = 0.025 * size
+        marker.scale.y = 0.025 * size
+        marker.scale.z = 0.01 * size
         marker.color.a = 1.0
         marker.color.r = 0.0 / 255.0
         marker.color.g = 150.0 / 255.0
@@ -262,14 +265,14 @@ class MinimalService(Node):
         marker.action = Marker.ADD
         marker.pose.position.x = 0.0
         marker.pose.position.y = 0.0
-        marker.pose.position.z = 0.025
+        marker.pose.position.z = 0.025 * size
         marker.pose.orientation.w = 1.0
         marker.pose.orientation.x = 0.0
         marker.pose.orientation.y = 0.0
         marker.pose.orientation.z = 0.0
-        marker.scale.x = 0.01
-        marker.scale.y = 0.01
-        marker.scale.z = 0.0025
+        marker.scale.x = 0.01 * size
+        marker.scale.y = 0.01 * size
+        marker.scale.z = 0.0025 * size
         marker.color.a = 1.0
         marker.color.r = 0.0 / 255.0
         marker.color.g = 0.0 / 255.0
