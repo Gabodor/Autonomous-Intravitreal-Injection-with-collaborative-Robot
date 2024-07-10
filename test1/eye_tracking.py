@@ -1,17 +1,8 @@
 #!/usr/bin/env python3
-from project_interfaces.srv import Pose
-
-import rclpy
-from rclpy.node import Node
-from geometry_msgs.msg import PoseStamped
 
 import argparse
 import numpy as np
 import cv2
-import time
-import threading
-from queue import Queue
-from collections import deque
 
 import torch
 import torch.nn as nn
@@ -19,8 +10,6 @@ from torch.autograd import Variable
 from torchvision import transforms
 import torch.backends.cudnn as cudnn
 import torchvision
-import math
-from transforms3d import euler
 
 from PIL import Image
 from PIL import Image, ImageOps
@@ -29,11 +18,18 @@ from face_detection import RetinaFace
 
 from l2cs import select_device, draw_gaze, getArch, Pipeline, render, getDataset
 
-from geometry_msgs.msg import PoseStamped, TransformStamped
-from tf2_ros.transform_listener import TransformListener
+import rclpy
+from rclpy.node import Node
+
+import time
+import threading
+from collections import deque
+from transforms3d import euler
+
+from project_interfaces.srv import Pose
+from geometry_msgs.msg import TransformStamped
+
 from tf2_ros.transform_broadcaster import TransformBroadcaster
-from tf2_ros.buffer import Buffer
-from tf2_ros import TransformException
 from visualization_msgs.msg import  Marker
 
 ROLL = 0.0
