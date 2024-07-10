@@ -26,32 +26,49 @@ TIME_MAX_SEC = STEP_MAX/FREQUENCY
 
 class Ur3_controller(Node):
     def __init__(self):
-        # Initialize class
+        # Initializing class
         super().__init__('ur3_controller')
         
-        # Create client(eye-tracking) to get pose
+        # Creating client(eye-tracking) to get pose
         self.cli = self.create_client(Pose, 'test1')
 
-        # Wait for eye-tracking to start
+        # Waiting for eye-tracking to start
         while not self.cli.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('service not available, waiting again...')
         self.req = Pose.Request()
 
-        # Create publisher to publish planning
+        # Creating publisher to publish planning
         self.publisher = self.create_publisher(PoseStamped, 'target_frame', 10)
-        
-        # Getting initial pose and setting arriving pose
-        self.get_initial_pose()
-        orientation = np.array([1.0, 0.0, 0.0, 0.0])
-        orientation = self.transform_orientation_to_eye(orientation)
-        self.end_pose = (-0.15, 0.40, 0.32538,  orientation[0], orientation[1], orientation[2], orientation[3])
+
+        # Setting target position
+        self.end_pose = (-0.15, 0.40, 0.35)
+        orientation = self.transform_orientation_to_eye(np.array([1.0, 0.0, 0.0, 0.0]))
+        self.end_pose = (self.end_pose[0], self.end_pose[1], self.end_pose[2],  orientation[0], orientation[1], orientation[2], orientation[3])
+
+        # Setting safe distance from eye
         self.safe_distance = 0.05
+        
+        # Setting injection angle
+        self.injection_angle = np.pi/2
+
+        # Setting the timer for the demonstration motion, eye_following, expressed in seconds
+        self.demonstration_time = 5
+        
+        # Getting current configuration 
+        self.get_initial_pose()
+
+        # Publishing frame with safe distance included
         self.publish_static_tranform()
 
+        # Computing trajectory, saving it in self.trajectory
         self.trajectory_planning()
+        
+        # Complete motion execution
         self.eye_approaching()
         self.eye_following()
         self.eye_injection()
+
+        self.get_logger().info('Performance finished')
 
     def publish_static_tranform(self):
         self.tf_static_broadcaster = StaticTransformBroadcaster(self)
@@ -63,7 +80,7 @@ class Ur3_controller(Node):
 
         t.transform.translation.x = 0.0
         t.transform.translation.y = 0.0
-        t.transform.translation.z = 0.05
+        t.transform.translation.z = self.safe_distance
 
         t.transform.rotation.w = 1.0
         t.transform.rotation.x = 0.0
@@ -94,8 +111,7 @@ class Ur3_controller(Node):
                                         trans.transform.rotation.w, trans.transform.rotation.x, trans.transform.rotation.y, trans.transform.rotation.z)
                 waiting_pose = False
             except TransformException as ex:
-                self.get_logger().info(
-                    f'Could not transform: {ex}')
+                self.get_logger().info(f'Could not transform: {ex}')
     
     def trajectory_planning(self):
         self.get_logger().info('Computing trajectory')
@@ -103,6 +119,8 @@ class Ur3_controller(Node):
                                
     def eye_approaching(self):
         step = 0
+        self.get_logger().info('Target approaching')
+
         while step < STEP_MAX :
             pose = self.trajectory.q[step]
 
@@ -118,9 +136,9 @@ class Ur3_controller(Node):
     
     def eye_following(self):
         step = 0
-        time_s = 5       # in seconds
-        while step < FREQUENCY*time_s:
-        #while True:
+        self.get_logger().info('Following eye as a demonstration')
+
+        while step < FREQUENCY*self.demonstration_time:
             orientation  = self.get_eye_orientation(0)
             orientation  = self.transform_orientation_to_eye(orientation)
 
@@ -132,18 +150,16 @@ class Ur3_controller(Node):
 
             time.sleep(TIME_STEP)
             step += 1
-        print("Move second")
         
     def eye_injection(self):
-        # spostarsi di 90 gradi verso il centro dell'occhio
-        # diminuire la distanza dal centro dell'occhio gradualmente
-        injection_angle = np.pi/2
         step = 0
+        self.get_logger().info('Finding injection angle')
+
         while step < STEP_MAX:
             q  = self.get_eye_orientation(0)
             position = np.array([self.end_pose[0], self.end_pose[1], self.end_pose[2]])
 
-            angle = (injection_angle)*(step/STEP_MAX)
+            angle = (self.injection_angle)*(step/STEP_MAX)
             orientation = self.get_injection_orientation(q, angle)
             orientation  = self.transform_orientation_to_eye(orientation)
 
@@ -154,24 +170,22 @@ class Ur3_controller(Node):
             time.sleep(TIME_STEP)
             step += 1
 
-        print("Move third - 1")
-
         step = 0
+        self.get_logger().info('Performing injection')
+
+        q = self.get_eye_orientation(0)
+        orientation = self.get_injection_orientation(q, self.injection_angle)
+        orientation  = self.transform_orientation_to_eye(orientation)
+
         while step < STEP_MAX:
-            q  = self.get_eye_orientation(0)
             position = np.array([self.end_pose[0], self.end_pose[1], self.end_pose[2]])
 
-            orientation = self.get_injection_orientation(q, injection_angle)
-            orientation  = self.transform_orientation_to_eye(orientation)
-            
             distance = self.safe_distance*(1.0 - step/STEP_MAX)
             position = self.safe_distance_position(position, orientation, distance)
 
             self.publish_pose(position, orientation)
             time.sleep(TIME_STEP)
             step += 1
-        
-        print("Move third - 2")
 
     def get_injection_orientation(self, orientation, angle):
         roll, pitch, yaw = euler.quat2euler(orientation, 'rzyx')
@@ -216,11 +230,14 @@ class Ur3_controller(Node):
         return q
     
     def transform_orientation_to_eye(self, orientation):
+        # Mirroring the quaternion
         q = np.array([orientation[0], -orientation[1], orientation[2], -orientation[3]])
-        q_trans = euler.euler2quat(0, 0, -np.pi/2, 'rzyx')
+        
+        # Rotating the end-effector towards the end_pose
+        alpha = np.arctan2(self.end_pose[1], self.end_pose[0]) - np.pi/2
+        q_trans = euler.euler2quat(alpha, 0, -np.pi/2, 'rzyx')
         q = self.quaternion_multiply(q_trans, q)
         return q
-
     
     def publish_pose(self, position, orientation):
         msg = PoseStamped()
@@ -242,6 +259,7 @@ class Ur3_controller(Node):
         #self.get_logger().info('Publishing pose')
 
     def quaternion_multiply(self, quaternion1, quaternion0):
+        # Questa funzione deve sparire, trova libreria che la implementa
         w0, x0, y0, z0 = quaternion0
         w1, x1, y1, z1 = quaternion1
         return np.array([-x1 * x0 - y1 * y0 - z1 * z0 + w1 * w0,
@@ -249,8 +267,6 @@ class Ur3_controller(Node):
                         -x1 * z0 + y1 * w0 + z1 * x0 + w1 * y0,
                         x1 * y0 - y1 * x0 + z1 * w0 + w1 * z0], dtype=np.float64)
     
-
-
 def main():
     rclpy.init()
 

@@ -40,7 +40,7 @@ ROLL = 0.0
 PITCH = 0.0
 YAW = 0.0
 
-PUBLISH_FREQUENCY = 0.2
+ROUTINE_FREQUENCY = 5
 
 def parse_args():
     """Parse input arguments."""
@@ -68,7 +68,6 @@ def eye_tracking():
     cudnn.enabled = True
     arch=args.arch
     cam = args.cam_id
-    # snapshot_path = args.snapshot
 
     gaze_pipeline = Pipeline(
         #weights=CWD / 'models' / 'L2CSNet_gaze360.pkl',
@@ -76,8 +75,9 @@ def eye_tracking():
         arch='ResNet50',
         device = select_device(args.device, batch_size=1)
     )
-    # checking camera index: 'ls -al /dev/video*'
-    # adding '--cam N_CAMERA' to command line to change camera
+
+    # Checking camera index: 'ls -al /dev/video*'
+    # Adding '--cam N_CAMERA' to command line to change camera
     cap = cv2.VideoCapture(cam)
 
     # Check if the webcam is opened correctly
@@ -118,18 +118,24 @@ def eye_tracking():
 class MinimalService(Node):
 
     def __init__(self):
+        # Initializing class
         super().__init__('minimal_service')
 
-        # Create buffer for smoothing the orientation
+        # Creating buffer for smoothing the orientation
         self.buffer = deque()
         self.buffer.append(np.array([ROLL,PITCH,YAW]))
 
+        # Creating service to deliver eye orientation
         self.srv = self.create_service(Pose, 'test1', self.service_callback)
 
-        # Create publisher to publish eye movement in the simulation 
+        self.current_position = (-0.15, 0.40, 0.35)
+
+        # Creating publisher to publish eye movement in the simulation 
         self.marker_publisher = self.create_publisher(Marker, 'visualization_marker', 10)
         self.tf_broadcaster = TransformBroadcaster(self)
-        self.timer = self.create_timer(PUBLISH_FREQUENCY, self.routine)
+
+        # Creating timer to perform routine
+        self.timer = self.create_timer(1/ROUTINE_FREQUENCY, self.routine)
 
     def routine(self):
         if len(self.buffer) < 8:
@@ -160,8 +166,6 @@ class MinimalService(Node):
         else:
             roll, pitch, yaw = self.buffer[0]
 
-        #roll, pitch, yaw = 0,  -0.785,  -0.785
-
         w, x, y, z = euler.euler2quat(roll, pitch, yaw, 'rzyx')
 
         #print("[roll: %f, pitch: %f, yaw: %f]" % (roll, pitch, yaw))
@@ -176,6 +180,7 @@ class MinimalService(Node):
         return response
 
     def quaternion_multiply(self, quaternion1, quaternion0):
+        # Questa funzione deve sparire, trova libreria che la implementa
         w0, x0, y0, z0 = quaternion0
         w1, x1, y1, z1 = quaternion1
         return np.array([-x1 * x0 - y1 * y0 - z1 * z0 + w1 * w0,
@@ -186,19 +191,22 @@ class MinimalService(Node):
     def environment_building(self):     
         roll, pitch, yaw = self.buffer[0]
         q = euler.euler2quat(roll, pitch, yaw, 'rzyx')  
-        q_trans = euler.euler2quat(np.pi, 0, -np.pi/2, 'rzyx')
+
+        alpha = np.arctan2(self.current_position[1], self.current_position[0]) - np.pi/2 + np.pi
+        q_trans = euler.euler2quat(alpha, 0, -np.pi/2, 'rzyx')
         w, x, y, z = self.quaternion_multiply(q_trans, q)
 
-        size = 1
+        # Scaling the eye dimension in visualization
+        size = 1.0
    
         t = TransformStamped()
 
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = 'base_link'
         t.child_frame_id = 'eye_frame'
-        t.transform.translation.x = -0.15
-        t.transform.translation.y = 0.40
-        t.transform.translation.z = 0.32538
+        t.transform.translation.x = self.current_position[0]
+        t.transform.translation.y = self.current_position[1]
+        t.transform.translation.z = self.current_position[2]
         t.transform.rotation.w = w
         t.transform.rotation.x = x
         t.transform.rotation.y = y
