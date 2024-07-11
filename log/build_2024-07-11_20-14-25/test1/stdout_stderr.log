@@ -1,0 +1,24 @@
+running develop
+running egg_info
+creating test1.egg-info
+writing test1.egg-info/PKG-INFO
+writing dependency_links to test1.egg-info/dependency_links.txt
+writing entry points to test1.egg-info/entry_points.txt
+writing requirements to test1.egg-info/requires.txt
+writing top-level names to test1.egg-info/top_level.txt
+writing manifest file 'test1.egg-info/SOURCES.txt'
+reading manifest file 'test1.egg-info/SOURCES.txt'
+writing manifest file 'test1.egg-info/SOURCES.txt'
+running build_ext
+Creating /home/gab/ros2_ws/src/test1/install/test1/lib/python3.10/site-packages/test1.egg-link (link to .)
+Installing eye_tracking script to /home/gab/ros2_ws/src/test1/install/test1/lib/test1
+Installing motion script to /home/gab/ros2_ws/src/test1/install/test1/lib/test1
+Installing prova script to /home/gab/ros2_ws/src/test1/install/test1/lib/test1
+
+Installed /home/gab/ros2_ws/src/test1/build/test1
+running symlink_data
+creating /home/gab/ros2_ws/src/test1/install/test1/share/ament_index
+creating /home/gab/ros2_ws/src/test1/install/test1/share/ament_index/resource_index
+creating /home/gab/ros2_ws/src/test1/install/test1/share/ament_index/resource_index/packages
+symbolically linking /home/gab/ros2_ws/src/test1/build/test1/resource/test1 -> /home/gab/ros2_ws/src/test1/install/test1/share/ament_index/resource_index/packages
+symbolically linking /home/gab/ros2_ws/src/test1/build/test1/package.xml -> /home/gab/ros2_ws/src/test1/install/test1/share/test1

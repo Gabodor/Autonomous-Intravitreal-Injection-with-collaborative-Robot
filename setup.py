@@ -21,7 +21,8 @@ setup(
     entry_points={
         'console_scripts': [
             'motion = test1.motion:main',
-            'eye_tracking = test1.eye_tracking:main'
+            'eye_tracking = test1.eye_tracking:main',
+            'prova = test1.prova:main'
         ],
     },
 )

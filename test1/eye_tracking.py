@@ -171,7 +171,7 @@ class MinimalService(Node):
 
     def service_callback(self, request, response):
         response.w, response.x, response.y, response.z = self.get_quaternion()
-        self.get_logger().info('Incoming request r: %d' % (request.r))
+        self.get_logger().info('Orientation sended: [w: %f, x: %f, y: %f, z: %f]' % (response.w, response.x, response.y, response.z))
 
         return response
 
@@ -279,6 +279,27 @@ class MinimalService(Node):
         marker.scale.z = 0.0025 * size
         marker.color.a = 1.0
         marker.color.r = 0.0 / 255.0
+        marker.color.g = 0.0 / 255.0
+        marker.color.b = 0.0 / 255.0
+
+        self.marker_publisher.publish(marker)
+
+        marker.ns = "my_namespace"
+        marker.id = 3
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+        marker.pose.position.x = 0.0
+        marker.pose.position.y = 0.0
+        marker.pose.position.z = 0.0
+        marker.pose.orientation.w = 1.0
+        marker.pose.orientation.x = 0.0
+        marker.pose.orientation.y = 0.0
+        marker.pose.orientation.z = 0.0
+        marker.scale.x = 0.051 * size
+        marker.scale.y = 0.051 * size
+        marker.scale.z = 0.01 * size
+        marker.color.a = 1.0
+        marker.color.r = 255.0 / 255.0
         marker.color.g = 0.0 / 255.0
         marker.color.b = 0.0 / 255.0
 

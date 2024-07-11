@@ -1,0 +1,26 @@
+[1.253s] Invoking command in '/home/gab/ros2_ws/src/test1/build/test1': PYTHONPATH=/home/gab/ros2_ws/src/test1/build/test1/prefix_override:/home/gab/ros2_ws/src/test1/install/test1/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/gab/ros2_ws/src/test1/build/test1/build --no-deps symlink_data
+[1.843s] running develop
+[2.316s] running egg_info
+[2.316s] creating test1.egg-info
+[2.317s] writing test1.egg-info/PKG-INFO
+[2.317s] writing dependency_links to test1.egg-info/dependency_links.txt
+[2.317s] writing entry points to test1.egg-info/entry_points.txt
+[2.318s] writing requirements to test1.egg-info/requires.txt
+[2.318s] writing top-level names to test1.egg-info/top_level.txt
+[2.318s] writing manifest file 'test1.egg-info/SOURCES.txt'
+[2.322s] reading manifest file 'test1.egg-info/SOURCES.txt'
+[2.323s] writing manifest file 'test1.egg-info/SOURCES.txt'
+[2.325s] running build_ext
+[2.325s] Creating /home/gab/ros2_ws/src/test1/install/test1/lib/python3.10/site-packages/test1.egg-link (link to .)
+[2.326s] Installing eye_tracking script to /home/gab/ros2_ws/src/test1/install/test1/lib/test1
+[2.326s] Installing motion script to /home/gab/ros2_ws/src/test1/install/test1/lib/test1
+[2.327s] Installing prova script to /home/gab/ros2_ws/src/test1/install/test1/lib/test1
+[2.327s] 
+[2.327s] Installed /home/gab/ros2_ws/src/test1/build/test1
+[2.327s] running symlink_data
+[2.327s] creating /home/gab/ros2_ws/src/test1/install/test1/share/ament_index
+[2.328s] creating /home/gab/ros2_ws/src/test1/install/test1/share/ament_index/resource_index
+[2.328s] creating /home/gab/ros2_ws/src/test1/install/test1/share/ament_index/resource_index/packages
+[2.328s] symbolically linking /home/gab/ros2_ws/src/test1/build/test1/resource/test1 -> /home/gab/ros2_ws/src/test1/install/test1/share/ament_index/resource_index/packages
+[2.328s] symbolically linking /home/gab/ros2_ws/src/test1/build/test1/package.xml -> /home/gab/ros2_ws/src/test1/install/test1/share/test1
+[2.378s] Invoked command in '/home/gab/ros2_ws/src/test1/build/test1' returned '0': PYTHONPATH=/home/gab/ros2_ws/src/test1/build/test1/prefix_override:/home/gab/ros2_ws/src/test1/install/test1/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py develop --editable --build-directory /home/gab/ros2_ws/src/test1/build/test1/build --no-deps symlink_data

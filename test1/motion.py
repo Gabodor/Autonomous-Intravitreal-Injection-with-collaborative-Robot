@@ -16,7 +16,7 @@ import time
 import numpy as np
 from transforms3d import euler
 
-# Costant values
+# Constant values
 STEP_MAX = 80
 FREQUENCY = 20
 TIME_STEP = 1/FREQUENCY
@@ -62,11 +62,13 @@ class Ur3_controller(Node):
         self.trajectory_planning()
         
         # Complete motion execution
-        self.eye_approaching()
-        self.eye_following()
-        self.eye_injection()
+        while True:
+            self.eye_approaching()
+            self.eye_following()
+            self.eye_injection()
 
-        self.get_logger().info('Performance finished')
+            self.get_logger().info('Performance finished')
+            time.sleep(5)
 
     def publish_static_tranform(self):
         self.tf_static_broadcaster = StaticTransformBroadcaster(self)
@@ -171,12 +173,12 @@ class Ur3_controller(Node):
         step = 0
         self.get_logger().info('Performing injection')
 
-        q = self.get_eye_orientation(0)
-        orientation = self.get_injection_orientation(q, self.injection_angle)
-        orientation  = self.transform_orientation_to_eye(orientation)
-
         while step < STEP_MAX:
             position = np.array([self.end_pose[0], self.end_pose[1], self.end_pose[2]])
+
+            q = self.get_eye_orientation(0)
+            orientation = self.get_injection_orientation(q, self.injection_angle)
+            orientation  = self.transform_orientation_to_eye(orientation)
 
             distance = self.safe_distance*(1.0 - step/STEP_MAX)
             position = self.safe_distance_position(position, orientation, distance)
