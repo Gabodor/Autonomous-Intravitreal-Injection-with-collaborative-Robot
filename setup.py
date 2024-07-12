@@ -22,7 +22,7 @@ setup(
         'console_scripts': [
             'ur3_injection = test1.ur3_injection:main',
             'eye_tracking = test1.eye_tracking:main',
-            'ur3_eye_movement = test1.ur3_eye_movement:main'
+            'ur3_eye_motion = test1.ur3_eye_motion:main'
         ],
     },
 )
