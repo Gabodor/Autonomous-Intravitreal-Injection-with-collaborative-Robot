@@ -134,7 +134,7 @@ class MinimalService(Node):
         self.timer = self.create_timer(1/ROUTINE_FREQUENCY, self.routine)
 
     def routine(self):
-        if len(self.buffer) < 8:
+        if len(self.buffer) < 5:
             orientation = np.array([ROLL, PITCH, YAW])
             for i in range(3):
                 orientation[i] = self.angle_limit_control(orientation[i], 0.70)
@@ -156,12 +156,13 @@ class MinimalService(Node):
         return angle
 
     def get_quaternion(self):
-        #print(len(self.buffer))
+        print(len(self.buffer))
         if len(self.buffer) > 1:
             roll, pitch, yaw = self.buffer.popleft()
         else:
             roll, pitch, yaw = self.buffer[0]
 
+        #roll, pitch, yaw = ROLL, PITCH, YAW
         w, x, y, z = euler.euler2quat(roll, pitch, yaw, 'rzyx')
 
         #print("[roll: %f, pitch: %f, yaw: %f]" % (roll, pitch, yaw))

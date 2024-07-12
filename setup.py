@@ -20,9 +20,9 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'motion = test1.motion:main',
+            'ur3_injection = test1.ur3_injection:main',
             'eye_tracking = test1.eye_tracking:main',
-            'prova = test1.prova:main'
+            'ur3_eye_movement = test1.ur3_eye_movement:main'
         ],
     },
 )

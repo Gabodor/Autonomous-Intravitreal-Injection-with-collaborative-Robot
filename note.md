@@ -16,10 +16,15 @@ Crea connessione:
  - prova di connessione su pc: ping 192.168.1.102 , IP del robot (lo trovi su "about")
         => se risponde è andata bene
 
-Far partire drivers su pc:
+Far partire drivers su pc PROVE:
  - ros2 launch ur_robot_driver ur_control.launch.py ur_type:=ur3 robot_ip:=192.168.1.102
  - ros2 launch ur_robot_driver ur_control.launch.py ur_type:=ur5e robot_ip:=192.168.0.100 headless_mode:=true
  - ros2 launch ur_robot_driver ur_control.launch.py ur_type:=ur5e robot_ip:=192.168.0.100 headless_mode:=true
  - ros2 launch ur_coppeliasim ur_controllers.launch.py ur_type:=ur5e robot_ip:=192.168.0.100 headless_mode:=true controllers_file:=config/ur_controllers_coppelia.yaml
 
-                è ur3 o ur3e?
+Far partire drivers su pc EFFETTIVI:
+ - ros2 launch ur2-launch ur_compliance_controller.launch.py ur_type:=ur5e robot_ip:=192.168.0.100 headless_mode:=true 
+ - ros2 launch ur2-launch ur_compliance_controller.launch.py ur_type:=ur3e robot_ip:=192.168.1.102 headless_mode:=true 
+
+Far partire i programmi miei:
+ - ros2 run test1 prova (oppure gli altri)
