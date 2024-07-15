@@ -23,8 +23,11 @@ Far partire drivers su pc PROVE:
  - ros2 launch ur_coppeliasim ur_controllers.launch.py ur_type:=ur5e robot_ip:=192.168.0.100 headless_mode:=true controllers_file:=config/ur_controllers_coppelia.yaml
 
 Far partire drivers su pc EFFETTIVI:
- - ros2 launch ur2-launch ur_compliance_controller.launch.py ur_type:=ur5e robot_ip:=192.168.0.100 headless_mode:=true 
- - ros2 launch ur2-launch ur_compliance_controller.launch.py ur_type:=ur3e robot_ip:=192.168.1.102 headless_mode:=true 
+ - ros2 launch ur3e-launch ur_compliance_controller.launch.py ur_type:=ur5e robot_ip:=192.168.0.100 headless_mode:=true 
+ - ros2 launch ur3e-launch ur_compliance_controller.launch.py ur_type:=ur3e robot_ip:=192.168.1.102 headless_mode:=true 
 
 Far partire i programmi miei:
  - ros2 run test1 prova (oppure gli altri)
+
+
+ ros2 launch ur_calibration calibration_correction.launch.py robot_ip:=192.168.1.102

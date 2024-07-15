@@ -22,10 +22,11 @@ import pyquaternion as pyq
 FREQUENCY = 500
 TIME_STEP = 1/FREQUENCY
 
+# Multiply time in seconds
 APPROACHING_STEPS = FREQUENCY * 5
-DEMONSTRATION_STEPS = FREQUENCY * 20
+DEMONSTRATION_STEPS = FREQUENCY * 10
 FINDING_INJECTION_POSITION_STEPS = FREQUENCY * 5
-INJECTION_STEPS = FREQUENCY * 2
+INJECTION_STEPS = FREQUENCY * 1
 SUBSEQUENCE_STEPS = int(FREQUENCY * 0.1)
 
 class Ur3_controller(Node):
@@ -48,8 +49,10 @@ class Ur3_controller(Node):
         self.get_initial_pose()
 
         # Setting target position
-        self.end_pose = (-0.15, 0.40, 0.35)
+#        self.end_pose = (-0.15, 0.35, 0.35)
 #        self.end_pose = (self.current_pose[0], self.current_pose[1], self.current_pose[2])
+        self.end_pose = (0.35, 0.40, 0.35)
+
         orientation = self.transform_orientation_to_eye(np.array([1.0, 0.0, 0.0, 0.0]))
         self.end_pose = (self.end_pose[0], self.end_pose[1], self.end_pose[2],  orientation[0], orientation[1], orientation[2], orientation[3])
 
@@ -58,22 +61,21 @@ class Ur3_controller(Node):
 #        self.safe_distance = 0.0
         
         # Setting injection angle
-        self.injection_angle = np.pi/2
-
-        # Setting the timer for the demonstration motion, eye_following, expressed in seconds
-        self.demonstration_time = 5
+        self.injection_angle = np.pi/3
 
         # Publishing frame with safe distance included, (USED IN SIMULATION)
         self.publish_static_tranform()
         
         # Complete motion execution
         while True:
+            print(self.current_pose)
             self.eye_approaching()
             self.eye_following()
             self.eye_injection()
+            self.eye_approaching()
 
             self.get_logger().info('Performance finished')
-            time.sleep(5)
+            time.sleep(10)
 
     def publish_static_tranform(self):
         self.tf_static_broadcaster = StaticTransformBroadcaster(self)
@@ -194,6 +196,23 @@ class Ur3_controller(Node):
         step = SUBSEQUENCE_STEPS
         while step < INJECTION_STEPS:
             distance = self.safe_distance*(1.0 - step/INJECTION_STEPS)
+
+            orientation = self.get_eye_orientation(0)
+            orientation = self.get_injection_orientation(orientation, self.injection_angle)
+            orientation  = self.transform_orientation_to_eye(orientation)
+
+            position = np.array([self.end_pose[0], self.end_pose[1], self.end_pose[2]])
+            position = self.safe_distance_position(position, orientation, distance)
+
+            arriving_pose = np.concatenate((position, orientation))
+
+            self.trajectory_planning(self.current_pose, arriving_pose, SUBSEQUENCE_STEPS)
+            self.publish_trajectory()
+            step += SUBSEQUENCE_STEPS
+
+        step = SUBSEQUENCE_STEPS
+        while step < INJECTION_STEPS:
+            distance = self.safe_distance*(step/INJECTION_STEPS)
 
             orientation = self.get_eye_orientation(0)
             orientation = self.get_injection_orientation(orientation, self.injection_angle)

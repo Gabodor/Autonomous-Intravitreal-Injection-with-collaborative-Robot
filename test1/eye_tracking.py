@@ -124,7 +124,8 @@ class MinimalService(Node):
         # Creating service to deliver eye orientation
         self.srv = self.create_service(Pose, 'test1', self.service_callback)
 
-        self.current_position = (-0.15, 0.40, 0.35)
+#        self.current_position = (-0.15, 0.35, 0.35)
+        self.current_position = (0.35, 0.40, 0.35)
 
         # Creating publisher to publish eye movement in the simulation 
         self.marker_publisher = self.create_publisher(Marker, 'visualization_marker', 10)

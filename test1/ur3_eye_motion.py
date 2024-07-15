@@ -48,14 +48,16 @@ class Ur3_controller(Node):
         self.get_initial_pose()
 
         # Setting target position
-#        self.end_pose = (-0.1, 0.1, 0.35)
-        self.end_pose = (-0.15, 0.40, 0.35)
+#        self.end_pose = (-0.15, 0.35, 0.35)
 #        self.end_pose = (self.current_pose[0], self.current_pose[1], self.current_pose[2])
+        self.end_pose = (0.35, 0.40, 0.35)
+
         orientation = self.transform_orientation_to_eye(np.array([1.0, 0.0, 0.0, 0.0]))
         self.end_pose = (self.end_pose[0], self.end_pose[1], self.end_pose[2],  orientation[0], orientation[1], orientation[2], orientation[3])
         
         # Setting safe distance from eye
         self.safe_distance = 0.05
+#        self.safe_distance = 0.0
 
         # Publishing frame with safe distance included, (USED IN SIMULATION)
         self.publish_static_tranform()
@@ -70,7 +72,7 @@ class Ur3_controller(Node):
 
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = 'wrist_3_link'
-        t.child_frame_id = 'safe_distance'
+        t.child_frame_id = 'eye_center'
 
         t.transform.translation.x = 0.0
         t.transform.translation.y = 0.0
