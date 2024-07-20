@@ -44,7 +44,7 @@ def parse_args():
         description='Gaze evalution using model pretrained with L2CS-Net on Gaze360.')
     parser.add_argument(
         '--device',dest='device', help='Device to run model: cpu or gpu:0',
-        default="cpu", type=str)
+        default='cuda', type=str)
     parser.add_argument(
         '--snapshot',dest='snapshot', help='Path of model snapshot.', 
         default='output/snapshots/L2CS-gaze360-_loader-180-4/_epoch_55.pkl', type=str)
@@ -66,10 +66,9 @@ def eye_tracking():
     cam = args.cam_id
 
     gaze_pipeline = Pipeline(
-        #weights=CWD / 'models' / 'L2CSNet_gaze360.pkl',
         weights = getDataset(),
         arch='ResNet50',
-        device = select_device(args.device, batch_size=1)
+        device = torch.device(args.device)
     )
 
     # Checking camera index: 'ls -al /dev/video*'
@@ -125,7 +124,7 @@ class MinimalService(Node):
         self.srv = self.create_service(Pose, 'test1', self.service_callback)
 
 #        self.current_position = (-0.15, 0.35, 0.35)
-        self.current_position = (0.35, 0.40, 0.35)
+        self.current_position = (0.30, 0.35, 0.35)
 
         # Creating publisher to publish eye movement in the simulation 
         self.marker_publisher = self.create_publisher(Marker, 'visualization_marker', 10)
@@ -149,11 +148,11 @@ class MinimalService(Node):
 
         self.environment_building()
 
-    def angle_limit_control(self, angle, limit):
-        if angle > limit:
-            angle = limit
-        if angle < -limit:
-            angle = -limit
+    def angle_limit_control(self, angle, limit_rad):
+        if angle > limit_rad:
+            angle = limit_rad
+        if angle < -limit_rad:
+            angle = -limit_rad
         return angle
 
     def get_quaternion(self):
@@ -187,7 +186,8 @@ class MinimalService(Node):
                         x1 * y0 - y1 * x0 + z1 * w0 + w1 * z0], dtype=np.float64)
     
     def environment_building(self):     
-        roll, pitch, yaw = self.buffer[0]
+        #roll, pitch, yaw = self.buffer[0]
+        roll, pitch, yaw = self.angle_limit_control(ROLL, 0.70), self.angle_limit_control(PITCH, 0.70), self.angle_limit_control(YAW, 0.70)
         q = euler.euler2quat(roll, pitch, yaw, 'rzyx')  
 
         alpha = np.arctan2(self.current_position[1], self.current_position[0]) - np.pi/2 + np.pi

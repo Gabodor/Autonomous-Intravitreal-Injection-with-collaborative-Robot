@@ -20,13 +20,14 @@ import pyquaternion as pyq
 
 # Constant values
 FREQUENCY = 500
+#FREQUENCY = 80
 TIME_STEP = 1/FREQUENCY
 
 # Multiply time in seconds
-APPROACHING_STEPS = FREQUENCY * 5
-DEMONSTRATION_STEPS = FREQUENCY * 10
+APPROACHING_STEPS = FREQUENCY * 3 #5
+DEMONSTRATION_STEPS = FREQUENCY * 5 #20
 FINDING_INJECTION_POSITION_STEPS = FREQUENCY * 5
-INJECTION_STEPS = FREQUENCY * 1
+INJECTION_STEPS = FREQUENCY * 2
 SUBSEQUENCE_STEPS = int(FREQUENCY * 0.1)
 
 class Ur3_controller(Node):
@@ -49,14 +50,15 @@ class Ur3_controller(Node):
         self.get_initial_pose()
 
         # Setting target position
-#        self.end_pose = (-0.15, 0.35, 0.35)
-#        self.end_pose = (self.current_pose[0], self.current_pose[1], self.current_pose[2])
-        self.end_pose = (0.35, 0.40, 0.35)
+#        self.target_position = (-0.15, 0.35, 0.35)
+        self.target_position = (0.30, 0.35, 0.35)
+#        self.target_position = (0.25, 0.30, 0.30)
+#        self.target_position = (self.current_pose[0], self.current_pose[1], self.current_pose[2])
 
-        orientation = self.transform_orientation_to_eye(np.array([1.0, 0.0, 0.0, 0.0]))
-        self.end_pose = (self.end_pose[0], self.end_pose[1], self.end_pose[2],  orientation[0], orientation[1], orientation[2], orientation[3])
+        orientation = self.rotating_orientation_toward_target(np.array([1.0, 0.0, 0.0, 0.0]))
+        self.target_position = (self.target_position[0], self.target_position[1], self.target_position[2],  orientation[0], orientation[1], orientation[2], orientation[3])
 
-        # Setting safe distance from eye
+        # Setting safe distance from the center of the eye
         self.safe_distance = 0.05
 #        self.safe_distance = 0.0
         
@@ -64,26 +66,36 @@ class Ur3_controller(Node):
         self.injection_angle = np.pi/3
 
         # Publishing frame with safe distance included, (USED IN SIMULATION)
-        self.publish_static_tranform()
+        self.publish_RCM_frame()
         
         # Complete motion execution
         while True:
-            print(self.current_pose)
-            self.eye_approaching()
-            self.eye_following()
+            self.get_logger().info('Target approaching')
+            self.approaching_target_position()
+
+            #self.get_logger().info('Following eye as a demonstration')
+            #self.eye_following()
+
+            self.get_logger().info('Finding injection angle')
+            self.finding_injection_angle()
+            
+            self.get_logger().info('Performing injection')
             self.eye_injection()
-            self.eye_approaching()
+
+            #self.get_logger().info('Returning to safe position')
+            #self.approaching_target_position()
 
             self.get_logger().info('Performance finished')
             time.sleep(10)
 
-    def publish_static_tranform(self):
+    def publish_RCM_frame(self):
+        # RCM is the Remote Center of Motion
         self.tf_static_broadcaster = StaticTransformBroadcaster(self)
         t = TransformStamped()
 
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = 'wrist_3_link'
-        t.child_frame_id = 'safe_distance'
+        t.child_frame_id = 'RCM_frame'
 
         t.transform.translation.x = 0.0
         t.transform.translation.y = 0.0
@@ -99,8 +111,9 @@ class Ur3_controller(Node):
     def get_initial_pose(self):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
-
         waiting_pose = True
+
+        # Waiting to read the current pose 
         while waiting_pose:           
             try:
                 future = self.tf_buffer.wait_for_transform_async(
@@ -121,12 +134,13 @@ class Ur3_controller(Node):
                 self.get_logger().info(f'Could not transform: {ex}')
     
     def trajectory_planning(self, initial_pose, final_pose, steps):
-        #self.get_logger().info('Computing trajectory')
 
+        # Computing homogeneous transformation matrix of initial position
         position = [initial_pose[0], initial_pose[1], initial_pose[2]]
         orientation = [initial_pose[3], initial_pose[4], initial_pose[5], initial_pose[6]]
         T1 = SE3.Rt(UnitQuaternion(orientation).R, position)
 
+        # Computing homogeneous transformation matrix of final position
         position = [final_pose[0], final_pose[1], final_pose[2]]
         orientation = [final_pose[3], final_pose[4], final_pose[5], final_pose[6]]
         T2 = SE3.Rt(UnitQuaternion(orientation).R, position)
@@ -134,80 +148,95 @@ class Ur3_controller(Node):
         self.trajectory = []
         tmp = ctraj(T1, T2, steps)
 
+        # Exporting trajectory as a list of position
         for i in range(len(tmp)):
             quat = pyq.Quaternion(matrix=tmp[i].R).normalised
             self.trajectory.append([tmp[i].t[0], tmp[i].t[1], tmp[i].t[2], quat.w, quat.x, quat.y, quat.z])
                                
-    def eye_approaching(self):
-        self.get_logger().info('Target approaching')
+    def approaching_target_position(self):
+        # Target neutral orientation
+        orientation = self.rotating_orientation_toward_target(np.array([1.0, 0.0, 0.0, 0.0]))
 
-        # Computing trajectory, saving it in self.trajectory
-        orientation = self.transform_orientation_to_eye(np.array([1.0, 0.0, 0.0, 0.0]))
-
-        position = np.array([self.end_pose[0], self.end_pose[1], self.end_pose[2]])
-        position = self.safe_distance_position(position, orientation, self.safe_distance)
-
+        # Target position adding safe distance
+        position = np.array([self.target_position[0], self.target_position[1], self.target_position[2]])
+        position = self.traslate_position_from_RCM(position, orientation, self.safe_distance)
+        
+        # Computing trajectory
         arriving_pose = np.concatenate((position, orientation))
         self.trajectory_planning(self.current_pose, arriving_pose, APPROACHING_STEPS)
 
+        # Publishing the trajectory
         self.publish_trajectory()
     
     def eye_following(self):
-        self.get_logger().info('Following eye as a demonstration')
-
         step = 0
         while step < DEMONSTRATION_STEPS:
-            # Computing trajectory
+            # Finding arriving orientation
             orientation  = self.get_eye_orientation(0)
-            orientation  = self.transform_orientation_to_eye(orientation)
+            orientation  = self.rotating_orientation_toward_target(orientation)
 
-            position = np.array([self.end_pose[0], self.end_pose[1], self.end_pose[2]])
-            position = self.safe_distance_position(position, orientation, self.safe_distance)
+            # Finding arring position, adding safe distance 
+            position = np.array([self.target_position[0], self.target_position[1], self.target_position[2]])
+            position = self.traslate_position_from_RCM(position, orientation, self.safe_distance)
 
+            # Computing trajectory
             arriving_pose = np.concatenate((position, orientation))
-
             self.trajectory_planning(self.current_pose, arriving_pose, SUBSEQUENCE_STEPS)
+
+            # Publishing the trajectory
             self.publish_trajectory()
+
             step += SUBSEQUENCE_STEPS
         
-    def eye_injection(self):
-        self.get_logger().info('Finding injection angle')
-
+    def finding_injection_angle(self):
         step = SUBSEQUENCE_STEPS
         while step < FINDING_INJECTION_POSITION_STEPS:
-            angle = (self.injection_angle)*(step/FINDING_INJECTION_POSITION_STEPS)
-
+            # Getting current eye orientation
             orientation  = self.get_eye_orientation(0)
+
+            # Finding progressive angle from current position
+            angle_to_center = self.get_angle_from_center(orientation)
+            angle = (self.injection_angle - angle_to_center)*(step/FINDING_INJECTION_POSITION_STEPS) + angle_to_center
+
+            # Finding arriving orientation
             orientation = self.get_injection_orientation(orientation, angle)
-            orientation  = self.transform_orientation_to_eye(orientation)
+            orientation  = self.rotating_orientation_toward_target(orientation)
 
-
-            position = np.array([self.end_pose[0], self.end_pose[1], self.end_pose[2]])
-            position = self.safe_distance_position(position, orientation, self.safe_distance)
-
+            # Finding arring position, adding safe distance 
+            position = np.array([self.target_position[0], self.target_position[1], self.target_position[2]])
+            position = self.traslate_position_from_RCM(position, orientation, self.safe_distance)
+            
+            # Computing trajectory
             arriving_pose = np.concatenate((position, orientation))
-
             self.trajectory_planning(self.current_pose, arriving_pose, SUBSEQUENCE_STEPS)
+
+            # Publishing the trajectory
             self.publish_trajectory()
+
             step += SUBSEQUENCE_STEPS
-
-        self.get_logger().info('Performing injection')
-
+    
+    def eye_injection(self):
         step = SUBSEQUENCE_STEPS
         while step < INJECTION_STEPS:
+            # Slowly reducing the distance from RCM, performig injection
             distance = self.safe_distance*(1.0 - step/INJECTION_STEPS)
 
+            # Finding arriving orientation
             orientation = self.get_eye_orientation(0)
             orientation = self.get_injection_orientation(orientation, self.injection_angle)
-            orientation  = self.transform_orientation_to_eye(orientation)
+            orientation  = self.rotating_orientation_toward_target(orientation)
 
-            position = np.array([self.end_pose[0], self.end_pose[1], self.end_pose[2]])
-            position = self.safe_distance_position(position, orientation, distance)
+            # Finding arring position, adding progressive distance
+            position = np.array([self.target_position[0], self.target_position[1], self.target_position[2]])
+            position = self.traslate_position_from_RCM(position, orientation, distance)
 
+            # Computing trajectory
             arriving_pose = np.concatenate((position, orientation))
-
             self.trajectory_planning(self.current_pose, arriving_pose, SUBSEQUENCE_STEPS)
+
+            # Publishing the trajectory
             self.publish_trajectory()
+
             step += SUBSEQUENCE_STEPS
 
         step = SUBSEQUENCE_STEPS
@@ -216,10 +245,10 @@ class Ur3_controller(Node):
 
             orientation = self.get_eye_orientation(0)
             orientation = self.get_injection_orientation(orientation, self.injection_angle)
-            orientation  = self.transform_orientation_to_eye(orientation)
+            orientation  = self.rotating_orientation_toward_target(orientation)
 
-            position = np.array([self.end_pose[0], self.end_pose[1], self.end_pose[2]])
-            position = self.safe_distance_position(position, orientation, distance)
+            position = np.array([self.target_position[0], self.target_position[1], self.target_position[2]])
+            position = self.traslate_position_from_RCM(position, orientation, distance)
 
             arriving_pose = np.concatenate((position, orientation))
 
@@ -228,8 +257,13 @@ class Ur3_controller(Node):
             step += SUBSEQUENCE_STEPS
 
     def get_injection_orientation(self, orientation, angle):
+        # This function find out the new quaternion from the given one
+        # rotating it, of the angle given, around the RCM
+        # passing through the center of the eye, represented by the quaternion q = (w: 1.0, x: 0.0, y: 0.0, z: 0.0)
+    
         roll, pitch, yaw = euler.quat2euler(orientation, 'rzyx')
 
+        # First control the special cases yaw = 0 and pitch = 0, then computing the general case
         if yaw == 0:
             roll = 0
             pitch = - np.sign(pitch)*angle
@@ -238,9 +272,11 @@ class Ur3_controller(Node):
             yaw = - np.sign(yaw)*angle
         else:  
             roll = - np.arctan2(np.sin(yaw/2), np.sin(pitch/2))
-            # tan of 135 or -45 degree is the same thing but not for the frame rotation
+
+            # Tangent of 135° and -45° are equal, but that is not true for the frame rotation
             if np.abs(roll) > np.pi/2:
                 roll = - np.sign(roll)*(np.pi - np.abs(roll))
+
             pitch = - np.sign(pitch)*angle
             yaw = 0
         
@@ -248,35 +284,50 @@ class Ur3_controller(Node):
         q = self.quaternion_multiply(orientation, q)
         return q
 
-    def safe_distance_position(self, position, orientation, safe_distance):
+    def traslate_position_from_RCM(self, position, orientation, traslation):
+        # Finding the conjugate of the orientation, to compute transformation
         q = orientation
         q_conjugate = np.array([q[0], -q[1], -q[2], -q[3]])
 
-        p = np.array([0, position[0], position[1], position[2]])
-
-        traslation = self.quaternion_multiply(q, np.array([0, 0, 0, -safe_distance]))
+        # Normalizing traslation, in order to use quaternions
+        # Computing traslation oriented as orientation, q * traslation * q_conjugate
+        traslation = self.quaternion_multiply(q, np.array([0, 0, 0, -traslation]))
         traslation = self.quaternion_multiply(traslation, q_conjugate)
 
-        p_traslated = np.array([p[1] + traslation[1], p[2] + traslation[2], p[3] + traslation[3]])
+        # Adding traslation
+        p_traslated = np.array([position[0] + traslation[1], position[1] + traslation[2], position[2] + traslation[3]])
         return p_traslated
     
     def get_eye_orientation(self, request):
+        # Sending request to the server
         self.req.r = request
         future = self.cli.call_async(self.req)
+
+        # Waiting for the response
         rclpy.spin_until_future_complete(self, future)
         response = future.result()
+
+        # Saving response in an array 
         q = np.array([response.w, response.x, response.y, response.z])
 
         return q
+
+    def get_angle_from_center(self, orientation):
+        roll, pitch, yaw = euler.quat2euler(orientation, 'rzyx')
+
+        angle = 2 * np.arcsin(np.sqrt(1 - (np.cos(pitch) + np.cos(yaw))/2))
+
+        return np.abs(angle)
     
-    def transform_orientation_to_eye(self, orientation):
+    def rotating_orientation_toward_target(self, orientation):
         # Mirroring the quaternion
         q = np.array([orientation[0], -orientation[1], orientation[2], -orientation[3]])
         
-        # Rotating the end-effector towards the end_pose
-        alpha = np.arctan2(self.end_pose[1], self.end_pose[0]) - np.pi/2
+        # Rotating the end-effector towards the target_position
+        alpha = np.arctan2(self.target_position[1], self.target_position[0]) - np.pi/2
         q_trans = euler.euler2quat(alpha, 0, -np.pi/2, 'rzyx')
         q = self.quaternion_multiply(q_trans, q)
+
         return q
     
     def publish_pose(self, position, orientation):
@@ -296,11 +347,10 @@ class Ur3_controller(Node):
         
         self.current_pose = np.concatenate((position, orientation))
         self.publisher.publish(msg)
-        #self.get_logger().info('Publishing pose')
     
     def publish_trajectory(self):
         step = 1
-        while step < len(self.trajectory):
+        while step < len(self.trajectory):            
             pose = self.trajectory[step]
 
             position = (pose[0], pose[1], pose[2])
@@ -312,13 +362,18 @@ class Ur3_controller(Node):
             step += 1
 
     def quaternion_multiply(self, quaternion1, quaternion0):
-        # Questa funzione deve sparire, trova libreria che la implementa
-        w0, x0, y0, z0 = quaternion0
-        w1, x1, y1, z1 = quaternion1
-        return np.array([-x1 * x0 - y1 * y0 - z1 * z0 + w1 * w0,
-                        x1 * w0 + y1 * z0 - z1 * y0 + w1 * x0,
-                        -x1 * z0 + y1 * w0 + z1 * x0 + w1 * y0,
-                        x1 * y0 - y1 * x0 + z1 * w0 + w1 * z0], dtype=np.float64)
+        #w0, x0, y0, z0 = quaternion0
+        #w1, x1, y1, z1 = quaternion1
+        #q_f = np.array([-x1 * x0 - y1 * y0 - z1 * z0 + w1 * w0,
+        #                x1 * w0 + y1 * z0 - z1 * y0 + w1 * x0,
+        #                -x1 * z0 + y1 * w0 + z1 * x0 + w1 * y0,
+        #                x1 * y0 - y1 * x0 + z1 * w0 + w1 * z0], dtype=np.float64)
+        
+        q1 = pyq.Quaternion(quaternion1)
+        q0 = pyq.Quaternion(quaternion0)
+        q = q1*q0
+
+        return np.array([q.w, q.x, q.y, q.z])
     
 def main():
     rclpy.init()
