@@ -20,15 +20,17 @@ import pyquaternion as pyq
 
 # Constant values
 FREQUENCY = 500
-#FREQUENCY = 80
 TIME_STEP = 1/FREQUENCY
 
 # Multiply time in seconds
-APPROACHING_STEPS = FREQUENCY * 3 #5
-DEMONSTRATION_STEPS = FREQUENCY * 5 #20
-FINDING_INJECTION_POSITION_STEPS = FREQUENCY * 5
+APPROACHING_STEPS = FREQUENCY * 3
+DEMONSTRATION_STEPS = FREQUENCY * 5
+FINDING_INJECTION_POSITION_STEPS = FREQUENCY * 3
 INJECTION_STEPS = FREQUENCY * 2
 SUBSEQUENCE_STEPS = int(FREQUENCY * 0.1)
+
+DATASET_NUMBER_STD_DEVIATION = 20
+STABILITY_THRESHOLD = 0.01
 
 class Ur3_controller(Node):
     def __init__(self):
@@ -47,23 +49,22 @@ class Ur3_controller(Node):
         self.publisher = self.create_publisher(PoseStamped, 'target_frame', 10)
 
         # Getting current configuration 
-        self.get_initial_pose()
+        self.current_pose = self.get_initial_pose()
 
         # Setting target position
-#        self.target_position = (-0.15, 0.35, 0.35)
-        self.target_position = (0.30, 0.35, 0.35)
-#        self.target_position = (0.25, 0.30, 0.30)
-#        self.target_position = (self.current_pose[0], self.current_pose[1], self.current_pose[2])
-
-        orientation = self.rotating_orientation_toward_target(np.array([1.0, 0.0, 0.0, 0.0]))
-        self.target_position = (self.target_position[0], self.target_position[1], self.target_position[2],  orientation[0], orientation[1], orientation[2], orientation[3])
-
+        self.target_position = np.array([0.30, 0.35, 0.35])
+#        self.target_position = np.array([0.25, 0.30, 0.30])
+#        self.target_position = np.array([self.current_pose[0], self.current_pose[1], self.current_pose[2]])
+                                
         # Setting safe distance from the center of the eye
         self.safe_distance = 0.05
 #        self.safe_distance = 0.0
         
         # Setting injection angle
         self.injection_angle = np.pi/3
+
+        # Creating buffer for deviation standard computing
+        self.variation_buffer = []
 
         # Publishing frame with safe distance included, (USED IN SIMULATION)
         self.publish_RCM_frame()
@@ -86,7 +87,7 @@ class Ur3_controller(Node):
             #self.approaching_target_position()
 
             self.get_logger().info('Performance finished')
-            time.sleep(10)
+            time.sleep(5)
 
     def publish_RCM_frame(self):
         # RCM is the Remote Center of Motion
@@ -127,8 +128,8 @@ class Ur3_controller(Node):
                     'wrist_3_link',
                     rclpy.time.Time()
                     )
-                self.current_pose = (   trans.transform.translation.x, trans.transform.translation.y, trans.transform.translation.z,
-                                        trans.transform.rotation.w, trans.transform.rotation.x, trans.transform.rotation.y, trans.transform.rotation.z)
+                return  np.array([trans.transform.translation.x, trans.transform.translation.y, trans.transform.translation.z,
+                                    trans.transform.rotation.w, trans.transform.rotation.x, trans.transform.rotation.y, trans.transform.rotation.z])
                 waiting_pose = False
             except TransformException as ex:
                 self.get_logger().info(f'Could not transform: {ex}')
@@ -158,8 +159,7 @@ class Ur3_controller(Node):
         orientation = self.rotating_orientation_toward_target(np.array([1.0, 0.0, 0.0, 0.0]))
 
         # Target position adding safe distance
-        position = np.array([self.target_position[0], self.target_position[1], self.target_position[2]])
-        position = self.traslate_position_from_RCM(position, orientation, self.safe_distance)
+        position = self.traslate_position_from_RCM(self.target_position, orientation, self.safe_distance)
         
         # Computing trajectory
         arriving_pose = np.concatenate((position, orientation))
@@ -176,8 +176,7 @@ class Ur3_controller(Node):
             orientation  = self.rotating_orientation_toward_target(orientation)
 
             # Finding arring position, adding safe distance 
-            position = np.array([self.target_position[0], self.target_position[1], self.target_position[2]])
-            position = self.traslate_position_from_RCM(position, orientation, self.safe_distance)
+            position = self.traslate_position_from_RCM(self.target_position, orientation, self.safe_distance)
 
             # Computing trajectory
             arriving_pose = np.concatenate((position, orientation))
@@ -203,8 +202,7 @@ class Ur3_controller(Node):
             orientation  = self.rotating_orientation_toward_target(orientation)
 
             # Finding arring position, adding safe distance 
-            position = np.array([self.target_position[0], self.target_position[1], self.target_position[2]])
-            position = self.traslate_position_from_RCM(position, orientation, self.safe_distance)
+            position = self.traslate_position_from_RCM(self.target_position, orientation, self.safe_distance)
             
             # Computing trajectory
             arriving_pose = np.concatenate((position, orientation))
@@ -216,19 +214,22 @@ class Ur3_controller(Node):
             step += SUBSEQUENCE_STEPS
     
     def eye_injection(self):
-        step = SUBSEQUENCE_STEPS
+        step = 0
         while step < INJECTION_STEPS:
-            # Slowly reducing the distance from RCM, performig injection
-            distance = self.safe_distance*(1.0 - step/INJECTION_STEPS)
-
             # Finding arriving orientation
             orientation = self.get_eye_orientation(0)
             orientation = self.get_injection_orientation(orientation, self.injection_angle)
             orientation  = self.rotating_orientation_toward_target(orientation)
 
+            # Checking if the eye is stable, if it is not restart
+            if self.stability_check == False:
+                step = 0
+
+            # Slowly reducing the distance from RCM, performig injection
+            distance = self.safe_distance*(1.0 - step/INJECTION_STEPS)
+
             # Finding arring position, adding progressive distance
-            position = np.array([self.target_position[0], self.target_position[1], self.target_position[2]])
-            position = self.traslate_position_from_RCM(position, orientation, distance)
+            position = self.traslate_position_from_RCM(self.target_position, orientation, distance)
 
             # Computing trajectory
             arriving_pose = np.concatenate((position, orientation))
@@ -247,8 +248,7 @@ class Ur3_controller(Node):
             orientation = self.get_injection_orientation(orientation, self.injection_angle)
             orientation  = self.rotating_orientation_toward_target(orientation)
 
-            position = np.array([self.target_position[0], self.target_position[1], self.target_position[2]])
-            position = self.traslate_position_from_RCM(position, orientation, distance)
+            position = self.traslate_position_from_RCM(self.target_position, orientation, distance)
 
             arriving_pose = np.concatenate((position, orientation))
 
@@ -298,6 +298,24 @@ class Ur3_controller(Node):
         p_traslated = np.array([position[0] + traslation[1], position[1] + traslation[2], position[2] + traslation[3]])
         return p_traslated
     
+    def stability_control(self, orientation):
+        self.stability_check = False
+        lenght = len(self.variation_buffer)
+
+        if lenght == 0:
+            self.variation_buffer = np.array([orientation])
+        elif lenght < DATASET_NUMBER_STD_DEVIATION:
+            self.variation_buffer = np.append(self.variation_buffer, [orientation], axis=0)
+        else:
+            self.variation_buffer = np.delete(self.variation_buffer, 0, axis=0)
+            self.variation_buffer = np.append(self.variation_buffer, [orientation], axis=0)
+
+            std = np.std(self.variation_buffer, ddof=1, axis=0)
+            std_mean = np.mean(std)
+            #print(std_mean)
+            if std_mean < STABILITY_THRESHOLD:
+                self.stability_check = True
+
     def get_eye_orientation(self, request):
         # Sending request to the server
         self.req.r = request
@@ -309,6 +327,7 @@ class Ur3_controller(Node):
 
         # Saving response in an array 
         q = np.array([response.w, response.x, response.y, response.z])
+        self.stability_control(q)
 
         return q
 

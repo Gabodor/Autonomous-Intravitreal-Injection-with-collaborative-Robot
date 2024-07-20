@@ -31,12 +31,13 @@ from geometry_msgs.msg import TransformStamped
 
 from tf2_ros.transform_broadcaster import TransformBroadcaster
 from visualization_msgs.msg import  Marker
+import pyquaternion as pyq
 
 ROLL = 0.0
 PITCH = 0.0
 YAW = 0.0
 
-ROUTINE_FREQUENCY = 5
+ROUTINE_FREQUENCY = 20
 
 def parse_args():
     """Parse input arguments."""
@@ -123,10 +124,13 @@ class MinimalService(Node):
         # Creating service to deliver eye orientation
         self.srv = self.create_service(Pose, 'test1', self.service_callback)
 
-#        self.current_position = (-0.15, 0.35, 0.35)
+        # Setting position
         self.current_position = (0.30, 0.35, 0.35)
 
-        # Creating publisher to publish eye movement in the simulation 
+        # Setting angle limit to 45°, which is nearly 0.7 in radiant
+        self.angle_limit = 0.7
+
+        # Creating publisher to publish eye object in the simulation (RVIZ)
         self.marker_publisher = self.create_publisher(Marker, 'visualization_marker', 10)
         self.tf_broadcaster = TransformBroadcaster(self)
 
@@ -134,62 +138,49 @@ class MinimalService(Node):
         self.timer = self.create_timer(1/ROUTINE_FREQUENCY, self.routine)
 
     def routine(self):
-        if len(self.buffer) < 5:
-            orientation = np.array([ROLL, PITCH, YAW])
-            for i in range(3):
-                orientation[i] = self.angle_limit_control(orientation[i], 0.70)
-
-            last_orientation = self.buffer[-1]
-            diff = (orientation - last_orientation)/3
-
-            for i in range(3):
-                last_orientation += diff
-                self.buffer.append(last_orientation)
+        self.roll = self.angle_limit_control(ROLL, self.angle_limit)
+        self.pitch = self.angle_limit_control(PITCH, self.angle_limit)
+        self.yaw = self.angle_limit_control(YAW, self.angle_limit)
 
         self.environment_building()
 
     def angle_limit_control(self, angle, limit_rad):
+        # Controlling limit
         if angle > limit_rad:
             angle = limit_rad
+
         if angle < -limit_rad:
             angle = -limit_rad
+
         return angle
 
     def get_quaternion(self):
-        print(len(self.buffer))
-        if len(self.buffer) > 1:
-            roll, pitch, yaw = self.buffer.popleft()
-        else:
-            roll, pitch, yaw = self.buffer[0]
+        w, x, y, z = euler.euler2quat(self.roll, self.pitch, self.yaw, 'rzyx')
 
-        #roll, pitch, yaw = ROLL, PITCH, YAW
-        w, x, y, z = euler.euler2quat(roll, pitch, yaw, 'rzyx')
-
-        #print("[roll: %f, pitch: %f, yaw: %f]" % (roll, pitch, yaw))
+        #print("[roll: %f, pitch: %f, yaw: %f]" % (self.roll, self.pitch, self.yaw))
         #print("[w: %f, x: %f, y: %f, z: %f]" % (w, x, y, z))    
 
         return w, x, y, z
 
     def service_callback(self, request, response):
+        # Service required, responding with current orientation
         response.w, response.x, response.y, response.z = self.get_quaternion()
         self.get_logger().info('Orientation sended: [w: %f, x: %f, y: %f, z: %f]' % (response.w, response.x, response.y, response.z))
 
         return response
 
     def quaternion_multiply(self, quaternion1, quaternion0):
-        # Questa funzione deve sparire, trova libreria che la implementa
-        w0, x0, y0, z0 = quaternion0
-        w1, x1, y1, z1 = quaternion1
-        return np.array([-x1 * x0 - y1 * y0 - z1 * z0 + w1 * w0,
-                        x1 * w0 + y1 * z0 - z1 * y0 + w1 * x0,
-                        -x1 * z0 + y1 * w0 + z1 * x0 + w1 * y0,
-                        x1 * y0 - y1 * x0 + z1 * w0 + w1 * z0], dtype=np.float64)
-    
-    def environment_building(self):     
-        #roll, pitch, yaw = self.buffer[0]
-        roll, pitch, yaw = self.angle_limit_control(ROLL, 0.70), self.angle_limit_control(PITCH, 0.70), self.angle_limit_control(YAW, 0.70)
-        q = euler.euler2quat(roll, pitch, yaw, 'rzyx')  
+        q1 = pyq.Quaternion(quaternion1)
+        q0 = pyq.Quaternion(quaternion0)
+        q = q1*q0
 
+        return np.array([q.w, q.x, q.y, q.z])
+    
+    def environment_building(self):
+        # Getting current orientation
+        q = euler.euler2quat(self.roll, self.pitch, self.yaw, 'rzyx')  
+
+        # Rotate quaternion based on current position
         alpha = np.arctan2(self.current_position[1], self.current_position[0]) - np.pi/2 + np.pi
         q_trans = euler.euler2quat(alpha, 0, -np.pi/2, 'rzyx')
         w, x, y, z = self.quaternion_multiply(q_trans, q)
@@ -197,14 +188,17 @@ class MinimalService(Node):
         # Scaling the eye dimension in visualization
         size = 1.0
    
+        # Publishing eye frame
         t = TransformStamped()
 
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = 'base_link'
         t.child_frame_id = 'eye_frame'
+
         t.transform.translation.x = self.current_position[0]
         t.transform.translation.y = self.current_position[1]
         t.transform.translation.z = self.current_position[2]
+
         t.transform.rotation.w = w
         t.transform.rotation.x = x
         t.transform.rotation.y = y
@@ -212,96 +206,62 @@ class MinimalService(Node):
 
         self.tf_broadcaster.sendTransform(t)
 
+        # Creating eye object
         marker = Marker()
 
+        # Publishing eye-ball
         marker.header.frame_id = "eye_frame"
         marker.header.stamp = self.get_clock().now().to_msg()
 
         marker.ns = "my_namespace"
         marker.id = 0
+
         marker.type = Marker.SPHERE
         marker.action = Marker.ADD
+
         marker.pose.position.x = 0.0
         marker.pose.position.y = 0.0
         marker.pose.position.z = 0.0
+
         marker.pose.orientation.w = 1.0
         marker.pose.orientation.x = 0.0
         marker.pose.orientation.y = 0.0
         marker.pose.orientation.z = 0.0
+
         marker.scale.x = 0.05 * size
         marker.scale.y = 0.05 * size
         marker.scale.z = 0.05 * size
+
         marker.color.a = 1.0
         marker.color.r = 255.0 / 255.0
         marker.color.g = 255.0 / 255.0
         marker.color.b = 255.0 / 255.0
-
+        
         self.marker_publisher.publish(marker)
 
-        marker.header.frame_id = "eye_frame"
-        marker.header.stamp = self.get_clock().now().to_msg()
-
-        marker.ns = "my_namespace"
+        # Publishing eye iris
         marker.id = 1
-        marker.type = Marker.SPHERE
-        marker.action = Marker.ADD
-        marker.pose.position.x = 0.0
-        marker.pose.position.y = 0.0
         marker.pose.position.z = 0.02 * size
-        marker.pose.orientation.w = 1.0
-        marker.pose.orientation.x = 0.0
-        marker.pose.orientation.y = 0.0
-        marker.pose.orientation.z = 0.0
+
         marker.scale.x = 0.025 * size
         marker.scale.y = 0.025 * size
         marker.scale.z = 0.01 * size
-        marker.color.a = 1.0
+
         marker.color.r = 0.0 / 255.0
         marker.color.g = 150.0 / 255.0
         marker.color.b = 0.0 / 255.0
-
+        
         self.marker_publisher.publish(marker)
 
-        marker.header.frame_id = "eye_frame"
-        marker.header.stamp = self.get_clock().now().to_msg()
-
-        marker.ns = "my_namespace"
+        # Publishing eye pupil
         marker.id = 2
-        marker.type = Marker.SPHERE
-        marker.action = Marker.ADD
-        marker.pose.position.x = 0.0
-        marker.pose.position.y = 0.0
         marker.pose.position.z = 0.025 * size
-        marker.pose.orientation.w = 1.0
-        marker.pose.orientation.x = 0.0
-        marker.pose.orientation.y = 0.0
-        marker.pose.orientation.z = 0.0
+
         marker.scale.x = 0.01 * size
         marker.scale.y = 0.01 * size
         marker.scale.z = 0.0025 * size
-        marker.color.a = 1.0
+
         marker.color.r = 0.0 / 255.0
-        marker.color.g = 0.0 / 255.0
-        marker.color.b = 0.0 / 255.0
-
-        self.marker_publisher.publish(marker)
-
-        marker.ns = "my_namespace"
-        marker.id = 3
-        marker.type = Marker.SPHERE
-        marker.action = Marker.ADD
-        marker.pose.position.x = 0.0
-        marker.pose.position.y = 0.0
-        marker.pose.position.z = 0.0
-        marker.pose.orientation.w = 1.0
-        marker.pose.orientation.x = 0.0
-        marker.pose.orientation.y = 0.0
-        marker.pose.orientation.z = 0.0
-        marker.scale.x = 0.051 * size
-        marker.scale.y = 0.051 * size
-        marker.scale.z = 0.01 * size
-        marker.color.a = 1.0
-        marker.color.r = 255.0 / 255.0
         marker.color.g = 0.0 / 255.0
         marker.color.b = 0.0 / 255.0
 
@@ -316,6 +276,7 @@ def main(args=None):
     rclpy.spin(minimal_service)
 
     t1.join()
+
     rclpy.shutdown()
 
 if __name__ == '__main__':

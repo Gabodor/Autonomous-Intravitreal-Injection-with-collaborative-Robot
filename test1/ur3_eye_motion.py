@@ -20,14 +20,10 @@ import pyquaternion as pyq
 
 # Constant values
 FREQUENCY = 500
-#FREQUENCY = 80
 TIME_STEP = 1/FREQUENCY
 
 # Multiply time in seconds
-APPROACHING_STEPS = FREQUENCY * 3 #5
-DEMONSTRATION_STEPS = FREQUENCY * 5 #20
-FINDING_INJECTION_POSITION_STEPS = FREQUENCY * 5
-INJECTION_STEPS = FREQUENCY * 2
+APPROACHING_STEPS = FREQUENCY * 3
 SUBSEQUENCE_STEPS = int(FREQUENCY * 0.1)
 
 class Ur3_controller(Node):
@@ -50,7 +46,6 @@ class Ur3_controller(Node):
         self.get_initial_pose()
 
         # Setting target position
-#        self.target_position = (-0.15, 0.35, 0.35)
         self.target_position = (0.30, 0.35, 0.35)
 #        self.target_position = (0.25, 0.30, 0.30)
 #        self.target_position = (self.current_pose[0], self.current_pose[1], self.current_pose[2])
@@ -59,7 +54,7 @@ class Ur3_controller(Node):
         self.target_position = (self.target_position[0], self.target_position[1], self.target_position[2],  orientation[0], orientation[1], orientation[2], orientation[3])
 
         # Setting safe distance from the center of the eye
-        self.safe_distance = 0.05
+        self.safe_distance = 0.02
 #        self.safe_distance = 0.0
 
         # Publishing frame with safe distance included, (USED IN SIMULATION)
@@ -70,7 +65,7 @@ class Ur3_controller(Node):
         self.approaching_target_position()
 
         self.get_logger().info('Simulating eye movement')
-        self.eye_following()
+        self.eye_movement()
 
         self.get_logger().info('Performance finished')
 
@@ -154,9 +149,8 @@ class Ur3_controller(Node):
         # Publishing the trajectory
         self.publish_trajectory()
     
-    def eye_following(self):
-        step = 0
-        while step < DEMONSTRATION_STEPS:
+    def eye_movement(self):
+        while True:
             # Finding arriving orientation
             orientation  = self.get_eye_orientation(0)
             orientation  = self.rotating_orientation_toward_target(orientation)
@@ -171,8 +165,6 @@ class Ur3_controller(Node):
 
             # Publishing the trajectory
             self.publish_trajectory()
-
-            step += SUBSEQUENCE_STEPS
 
     def traslate_position_from_RCM(self, position, orientation, traslation):
         # Finding the conjugate of the orientation, to compute transformation
@@ -206,7 +198,7 @@ class Ur3_controller(Node):
         # Rotating the end-effector towards the target_position
         alpha = np.arctan2(self.target_position[1], self.target_position[0]) - np.pi/2
         q_trans = euler.euler2quat(alpha, 0, -np.pi/2, 'rzyx')
-        q = self.quaternion_multiply(q_trans, q)
+        q = self.quaternion_multiply(q_trans, orientation)
 
         return q
     
