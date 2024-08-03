@@ -72,19 +72,19 @@ class Ur3_controller(Node):
         # Complete motion execution
         while True:
             self.get_logger().info('Target approaching')
-            self.approaching_target_position()
+            self.motion_approaching_target()
 
             #self.get_logger().info('Following eye as a demonstration')
-            #self.eye_following()
+            #self.motion_eye_following()
 
             self.get_logger().info('Finding injection angle')
-            self.finding_injection_angle()
+            self.motion_finding_injection_angle()
             
             self.get_logger().info('Performing injection')
-            self.eye_injection()
+            self.motion_eye_injection()
 
-            #self.get_logger().info('Returning to safe position')
-            #self.approaching_target_position()
+            self.get_logger().info('Returning to safe position')
+            self.motion_approaching_target()
 
             self.get_logger().info('Performance finished')
             time.sleep(5)
@@ -154,7 +154,7 @@ class Ur3_controller(Node):
             quat = pyq.Quaternion(matrix=tmp[i].R).normalised
             self.trajectory.append([tmp[i].t[0], tmp[i].t[1], tmp[i].t[2], quat.w, quat.x, quat.y, quat.z])
                                
-    def approaching_target_position(self):
+    def motion_approaching_target(self):
         # Target neutral orientation
         orientation = self.rotating_orientation_toward_target(np.array([1.0, 0.0, 0.0, 0.0]))
 
@@ -168,14 +168,14 @@ class Ur3_controller(Node):
         # Publishing the trajectory
         self.publish_trajectory()
     
-    def eye_following(self):
+    def motion_eye_following(self):
         step = 0
         while step < DEMONSTRATION_STEPS:
             # Finding arriving orientation
             orientation  = self.get_eye_orientation(0)
             orientation  = self.rotating_orientation_toward_target(orientation)
 
-            # Finding arring position, adding safe distance 
+            # Finding arriving position, adding safe distance 
             position = self.traslate_position_from_RCM(self.target_position, orientation, self.safe_distance)
 
             # Computing trajectory
@@ -187,7 +187,7 @@ class Ur3_controller(Node):
 
             step += SUBSEQUENCE_STEPS
         
-    def finding_injection_angle(self):
+    def motion_finding_injection_angle(self):
         step = SUBSEQUENCE_STEPS
         while step < FINDING_INJECTION_POSITION_STEPS:
             # Getting current eye orientation
@@ -213,7 +213,7 @@ class Ur3_controller(Node):
 
             step += SUBSEQUENCE_STEPS
     
-    def eye_injection(self):
+    def motion_eye_injection(self):
         step = 0
         while step < INJECTION_STEPS:
             # Finding arriving orientation
@@ -223,6 +223,7 @@ class Ur3_controller(Node):
 
             # Checking if the eye is stable, if it is not restart
             if self.stability_check == False:
+                #self.get_logger().info('The eye is not stable, waiting')
                 step = 0
 
             # Slowly reducing the distance from RCM, performig injection

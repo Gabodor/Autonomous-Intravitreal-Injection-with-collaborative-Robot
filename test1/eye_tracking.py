@@ -33,6 +33,8 @@ from tf2_ros.transform_broadcaster import TransformBroadcaster
 from visualization_msgs.msg import  Marker
 import pyquaternion as pyq
 
+from filterpy.kalman import KalmanFilter
+
 ROLL = 0.0
 PITCH = 0.0
 YAW = 0.0
@@ -137,10 +139,20 @@ class MinimalService(Node):
         # Creating timer to perform routine
         self.timer = self.create_timer(1/ROUTINE_FREQUENCY, self.routine)
 
+        # Creating Kalman Filter 
+        self.kalman_filter =  self.create_filter()
+
     def routine(self):
         self.roll = self.angle_limit_control(ROLL, self.angle_limit)
         self.pitch = self.angle_limit_control(PITCH, self.angle_limit)
         self.yaw = self.angle_limit_control(YAW, self.angle_limit)
+
+        z = np.array([self.roll, self.pitch, self.yaw])
+        self.kalman_filter.predict()
+        self.kalman_filter.update(z)
+
+        x = self.kalman_filter.x
+        self.roll, self.pitch, self.yaw = x[0], x[1], x[2]
 
         self.environment_building()
 
@@ -153,6 +165,40 @@ class MinimalService(Node):
             angle = -limit_rad
 
         return angle
+    
+    def create_filter(self):
+        filter = KalmanFilter (dim_x=6, dim_z=3)
+
+        z = np.array([ROLL, PITCH, YAW])
+
+        v = np.array([0.0, 0.0, 0.0])
+        
+        filter.x = np.concatenate((z, v), axis=0)
+
+        filter.R = np.array([[5.0, 0.0, 0.0],
+                        [0.0, 5.0, 0.0],
+                        [0.0, 0.0, 5.0]])
+        
+        filter.P = np.array([[1000.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 1000.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 1000.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 1000.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 1000.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 1000.0]])
+
+        filter.H = np.array([[1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 1.0, 0.0, 0.0, 0.0]])
+        
+        d_t = 0.1
+        filter.F = np.array([[1.0, 0.0, 0.0, d_t, 0.0, 0.0],
+                        [0.0, 1.0, 0.0, 0.0, d_t, 0.0],
+                        [0.0, 0.0, 1.0, 0.0, 0.0, d_t],
+                        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 1.0]])
+
+        return filter
 
     def get_quaternion(self):
         w, x, y, z = euler.euler2quat(self.roll, self.pitch, self.yaw, 'rzyx')
