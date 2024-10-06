@@ -75,7 +75,7 @@ mkdir -p ~/ros2_ws/src
 #### 3. Clone this repo in your workspace src folder:  
 ```
 cd ~/ros2_ws/src
-git clone https://github.com/Gabodor/Autonomous-Intravitreal-Injection-with-collaborative-Robot.git test1
+git clone https://github.com/Gabodor/Autonomous-Intravitreal-Injection-with-collaborative-Robot.git ur3_injection_controller
 ```
 #### 4. Create the interface used in the project:  
 - Create a new ROS2 package:
