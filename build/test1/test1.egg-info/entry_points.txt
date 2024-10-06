@@ -1,5 +1,0 @@
-[console_scripts]
-eye_tracking = test1.eye_tracking:main
-motion = test1.motion:main
-prova = test1.prova:main
-

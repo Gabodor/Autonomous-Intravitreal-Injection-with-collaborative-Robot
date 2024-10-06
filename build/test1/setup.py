@@ -1,1 +1,0 @@
-/home/gab/ros2_ws/src/test1/setup.py
