@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'test1'
+package_name = 'ur3_injection_controller'
 
 setup(
     name=package_name,
@@ -20,9 +20,9 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'ur3_injection = test1.ur3_injection:main',
-            'eye_tracking = test1.eye_tracking:main',
-            'ur3_eye_motion = test1.ur3_eye_motion:main'
+            'ur3_injection = ur3_injection_controller.ur3_injection:main',
+            'eye_tracking = ur3_injection_controller.eye_tracking:main',
+            'ur3_eye_motion = tesur3_injection_controllert1.ur3_eye_motion:main'
         ],
     },
 )
